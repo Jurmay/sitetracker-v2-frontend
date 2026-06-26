@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 
 const NEEDS_DATE_RANGE = new Set([
-  'daily_progress_report', 'weekly_progress_report', 'monthly_progress_report', 'master_roll_report',
+  'daily_progress_report', 'weekly_progress_report', 'monthly_progress_report',
+  'master_roll_report', 'labour_productivity_report',
 ]);
 
 const IMPLEMENTED_KEYS = new Set([
   'daily_progress_report', 'weekly_progress_report', 'monthly_progress_report',
   'boq_completion', 'master_roll_report', 'advance_register',
   'settlement_register', 'cashbook_report', 'labour_advance_ledger',
+  'labour_productivity_report', 'ledger_report', 'project_financial_report',
 ]);
 
 function todayIso() {
