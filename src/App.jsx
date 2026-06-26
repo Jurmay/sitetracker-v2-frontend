@@ -1,27 +1,36 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useMyRoles } from './lib/useMyRoles';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterRollPage } from './pages/MasterRollPage';
 import { ProgressPage } from './pages/ProgressPage';
+import { AdvancesPage } from './pages/AdvancesPage';
+import { CashierPage } from './pages/CashierPage';
 
-const TABS = [
+// Tabs visible to every role for now - restricting visibility properly
+// belongs to the per-user report-permission grid (Phase 3 design), which
+// has no frontend UI yet. The two financial tabs below ARE conditioned
+// on role, since their underlying actions are meaningfully different per
+// role (a Coordinator submitting vs a Cashier verifying), not just a
+// visibility preference.
+const BASE_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'master-roll', label: 'Master Roll' },
   { key: 'progress', label: 'Progress' },
 ];
 
-function NavBar({ activeTab, onChangeTab, onSignOut }) {
+function NavBar({ tabs, activeTab, onChangeTab, onSignOut }) {
   return (
     <div
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: 'var(--space-3) var(--space-5)', borderBottom: 'var(--border-width) solid var(--color-ink)',
-        background: 'var(--color-paper-raised)',
+        background: 'var(--color-paper-raised)', flexWrap: 'wrap', gap: 'var(--space-2)',
       }}
     >
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        {TABS.map((tab) => (
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => onChangeTab(tab.key)}
@@ -45,6 +54,7 @@ function AppShell() {
   // follow-up piece, not yet built.
   const [projectId] = useState(() => new URLSearchParams(window.location.search).get('project_id'));
   const [activeTab, setActiveTab] = useState('dashboard');
+  const { roles, hasRole } = useMyRoles(projectId);
 
   if (loading) {
     return (
@@ -72,12 +82,20 @@ function AppShell() {
     );
   }
 
+  const tabs = [
+    ...BASE_TABS,
+    ...(hasRole('site_coordinator') ? [{ key: 'advances', label: 'Advances' }] : []),
+    ...(hasRole('cashier') ? [{ key: 'cashier', label: 'Cashier' }] : []),
+  ];
+
   return (
     <div>
-      <NavBar activeTab={activeTab} onChangeTab={setActiveTab} onSignOut={signOut} />
+      <NavBar tabs={tabs} activeTab={activeTab} onChangeTab={setActiveTab} onSignOut={signOut} />
       {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
       {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
       {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
+      {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
+      {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
     </div>
   );
 }
