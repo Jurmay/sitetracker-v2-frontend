@@ -12,7 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
  * surfaced, since every router was written to return a specific,
  * actionable detail string rather than a generic error.
  */
-export async function apiFetch(path, { method = 'GET', body, params } = {}) {
+export async function apiFetch(path, { method = 'GET', body, params, raw = false } = {}) {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
 
@@ -39,11 +39,16 @@ export async function apiFetch(path, { method = 'GET', body, params } = {}) {
       const errorBody = await response.json();
       detail = errorBody.detail ?? detail;
     } catch {
-      // response body wasn't JSON - keep the generic message
+      // response body wasn't JSON (e.g. an error from a route that
+      // normally returns a file) - keep the generic message
     }
     throw new Error(detail);
   }
 
   if (response.status === 204) return null;
+  // raw=true: caller wants the actual binary content (PDF/CSV download),
+  // not a parsed JSON object - returns a Blob, which the caller can hand
+  // to URL.createObjectURL for a save-as download.
+  if (raw) return response.blob();
   return response.json();
 }

@@ -8,6 +8,7 @@ import { ProgressPage } from './pages/ProgressPage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
+import { ReportsPage } from './pages/ReportsPage';
 
 // Tabs visible to every role for now - restricting visibility properly
 // belongs to the per-user report-permission grid (Phase 3 design), which
@@ -19,6 +20,7 @@ const BASE_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'master-roll', label: 'Master Roll' },
   { key: 'progress', label: 'Progress' },
+  { key: 'reports', label: 'Reports' },
 ];
 
 function NavBar({ tabs, activeTab, onChangeTab, onSignOut }) {
@@ -96,6 +98,7 @@ function AppShell() {
       {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
       {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
       {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
+      {activeTab === 'reports' && <ReportsPage projectId={projectId} />}
       {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
       {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
       {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
