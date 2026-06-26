@@ -7,6 +7,7 @@ import { MasterRollPage } from './pages/MasterRollPage';
 import { ProgressPage } from './pages/ProgressPage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
+import { AdminPage } from './pages/AdminPage';
 
 // Tabs visible to every role for now - restricting visibility properly
 // belongs to the per-user report-permission grid (Phase 3 design), which
@@ -86,6 +87,7 @@ function AppShell() {
     ...BASE_TABS,
     ...(hasRole('site_coordinator') ? [{ key: 'advances', label: 'Advances' }] : []),
     ...(hasRole('cashier') ? [{ key: 'cashier', label: 'Cashier' }] : []),
+    ...(hasRole('admin') || hasRole('company_owner') ? [{ key: 'admin', label: 'Admin' }] : []),
   ];
 
   return (
@@ -96,6 +98,7 @@ function AppShell() {
       {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
       {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
       {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
+      {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
     </div>
   );
 }
