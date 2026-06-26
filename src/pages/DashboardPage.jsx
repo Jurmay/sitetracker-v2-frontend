@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/apiClient';
 
 function formatCurrency(amount) {
@@ -24,7 +23,6 @@ function KpiCard({ label, value, variant }) {
 }
 
 export function DashboardPage({ projectId }) {
-  const { signOut } = useAuth();
   const [evm, setEvm] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,10 +38,7 @@ export function DashboardPage({ projectId }) {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-6)' }}>
-        <h1>Project dashboard</h1>
-        <button onClick={signOut}>Sign out</button>
-      </div>
+      <h1 style={{ marginBottom: 'var(--space-6)' }}>Project dashboard</h1>
 
       {loading && <p style={{ color: 'var(--color-aggregate)' }}>Loading project figures…</p>}
 
