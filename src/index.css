@@ -1,0 +1,201 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ---- Color: drawn from the job site, not a SaaS palette ---- */
+  --color-ink: #2B2825;          /* wet concrete / rebar - primary text & dark surfaces */
+  --color-paper: #F5F2EA;        /* limewash white - background */
+  --color-paper-raised: #FFFFFF; /* card surfaces, slightly lifted off the paper */
+  --color-safety: #C2622A;       /* site-safety burnt orange - primary actions */
+  --color-safety-deep: #9C4E22;  /* pressed/hover state of safety orange */
+  --color-survey: #5B7A6B;       /* surveyor green - success, verified, settled */
+  --color-survey-deep: #46604F;
+  --color-brick: #A33B2E;        /* brick red - alerts, locks, overdue, rejected */
+  --color-brick-deep: #832D23;
+  --color-aggregate: #8C8579;    /* aggregate grey - borders, secondary text */
+  --color-aggregate-light: #D9D4C8;
+  --color-aggregate-faint: #EAE6DB;
+
+  /* ---- Type ---- */
+  --font-display: 'Fraunces', serif;     /* headings only - has weight, not neutral */
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace; /* every number, amount, ID renders here */
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  /* ---- Spacing & shape ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  --radius-sm: 3px;   /* deliberately tight - this is work-order paper, not a soft app */
+  --radius-md: 6px;
+
+  --border-width: 1.5px; /* slightly thick - reads as printed card stock, not a thin hairline */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: var(--text-2xl); }
+h2 { font-size: var(--text-xl); }
+h3 { font-size: var(--text-lg); }
+
+.numeric, .mono {
+  font-family: var(--font-mono);
+}
+
+button {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid var(--color-ink);
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  transition: transform 0.08s ease, background 0.12s ease;
+}
+
+button:hover { background: var(--color-aggregate-faint); }
+button:active { transform: translateY(1px); }
+button:focus-visible {
+  outline: 3px solid var(--color-safety);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: var(--color-safety);
+  border-color: var(--color-safety-deep);
+  color: var(--color-paper);
+}
+button.primary:hover { background: var(--color-safety-deep); }
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+input, select, textarea {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  border: var(--border-width) solid var(--color-aggregate-light);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  width: 100%;
+}
+
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--color-safety);
+  outline-offset: 1px;
+  border-color: var(--color-safety);
+}
+
+/* ---- The work-order card: the base unit of the whole app ---- */
+.ticket {
+  background: var(--color-paper-raised);
+  border: var(--border-width) solid var(--color-ink);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  position: relative;
+}
+
+/* ---- Signature element: the ink-stamp status badge ----
+   Every workflow status renders through this one component family.
+   Slightly rotated and roughened, evoking a real rubber stamp on
+   real paperwork - this is the one bold/maximalist gesture in an
+   otherwise disciplined, quiet interface. */
+.stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: var(--space-2) var(--space-4);
+  border: 2.5px solid currentColor;
+  border-radius: 3px;
+  transform: rotate(-3deg);
+  position: relative;
+  text-shadow: 0.5px 0.5px 0 currentColor; /* slight ink-bleed weight */
+}
+
+.stamp::before {
+  /* a second, more visibly offset outline at a different angle -
+     two overlapping impressions, the way a real hand-stamp rarely
+     lands perfectly twice */
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid currentColor;
+  opacity: 0.35;
+  border-radius: 3px;
+  transform: rotate(4deg);
+}
+
+.stamp::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border: 1px solid currentColor;
+  opacity: 0.2;
+  border-radius: 2px;
+  transform: rotate(-1.5deg) scale(1.04);
+}
+
+.stamp--pending   { color: var(--color-aggregate); transform: rotate(-3deg); }
+.stamp--verified  { color: var(--color-survey); transform: rotate(2deg); }
+.stamp--approved  { color: var(--color-survey-deep); transform: rotate(-2.5deg); }
+.stamp--disbursed { color: var(--color-survey-deep); transform: rotate(3deg); }
+.stamp--settled   { color: var(--color-survey-deep); transform: rotate(-1.5deg); }
+.stamp--rejected  { color: var(--color-brick); transform: rotate(3.5deg); }
+.stamp--locked    { color: var(--color-brick-deep); transform: rotate(-3.5deg); }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
