@@ -9,6 +9,7 @@ import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { ProjectPickerPage } from './pages/ProjectPickerPage';
 
 // Tabs visible to every role for now - restricting visibility properly
 // belongs to the per-user report-permission grid (Phase 3 design), which
@@ -23,7 +24,7 @@ const BASE_TABS = [
   { key: 'reports', label: 'Reports' },
 ];
 
-function NavBar({ tabs, activeTab, onChangeTab, onSignOut }) {
+function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject }) {
   return (
     <div
       style={{
@@ -44,20 +45,39 @@ function NavBar({ tabs, activeTab, onChangeTab, onSignOut }) {
           </button>
         ))}
       </div>
-      <button onClick={onSignOut}>Sign out</button>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <button onClick={onSwitchProject}>Switch project</button>
+        <button onClick={onSignOut}>Sign out</button>
+      </div>
     </div>
   );
 }
 
 function AppShell() {
   const { user, loading, signOut } = useAuth();
-  // Project selection is hardcoded as a placeholder for this scaffolding
-  // pass - a real project picker (for users with access to multiple
-  // projects, per the Company Owner / multi-project design) is a
-  // follow-up piece, not yet built.
-  const [projectId] = useState(() => new URLSearchParams(window.location.search).get('project_id'));
+  const [projectId, setProjectId] = useState(() => new URLSearchParams(window.location.search).get('project_id'));
   const [activeTab, setActiveTab] = useState('dashboard');
   const { roles, hasRole } = useMyRoles(projectId);
+
+  function selectProject(id) {
+    setProjectId(id);
+    // Persist the choice in the URL, matching the existing pattern (so
+    // refreshing or sharing the link keeps working), without a full
+    // page reload - history.replaceState keeps the in-memory React
+    // state and the address bar in sync without re-running auth/data
+    // fetches that a navigation would otherwise trigger.
+    const url = new URL(window.location.href);
+    url.searchParams.set('project_id', id);
+    window.history.replaceState({}, '', url);
+    setActiveTab('dashboard');
+  }
+
+  function switchProject() {
+    setProjectId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('project_id');
+    window.history.replaceState({}, '', url);
+  }
 
   if (loading) {
     return (
@@ -72,17 +92,7 @@ function AppShell() {
   }
 
   if (!projectId) {
-    return (
-      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)' }}>
-        <div className="ticket" style={{ maxWidth: 420 }}>
-          <h2>No project selected</h2>
-          <p style={{ color: 'var(--color-aggregate)' }}>
-            Add <code>?project_id=&lt;uuid&gt;</code> to the URL for now. A proper
-            project picker is not yet built in this scaffolding pass.
-          </p>
-        </div>
-      </div>
-    );
+    return <ProjectPickerPage onSelectProject={selectProject} />;
   }
 
   const tabs = [
@@ -94,7 +104,7 @@ function AppShell() {
 
   return (
     <div>
-      <NavBar tabs={tabs} activeTab={activeTab} onChangeTab={setActiveTab} onSignOut={signOut} />
+      <NavBar tabs={tabs} activeTab={activeTab} onChangeTab={setActiveTab} onSignOut={signOut} onSwitchProject={switchProject} />
       {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
       {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
       {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
