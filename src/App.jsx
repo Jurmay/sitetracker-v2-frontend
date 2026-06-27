@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useMyRoles } from './lib/useMyRoles';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -11,12 +12,6 @@ import { AdminPage } from './pages/AdminPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ProjectPickerPage } from './pages/ProjectPickerPage';
 
-// Tabs visible to every role for now - restricting visibility properly
-// belongs to the per-user report-permission grid (Phase 3 design), which
-// has no frontend UI yet. The two financial tabs below ARE conditioned
-// on role, since their underlying actions are meaningfully different per
-// role (a Coordinator submitting vs a Cashier verifying), not just a
-// visibility preference.
 const BASE_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'master-roll', label: 'Master Roll' },
@@ -24,12 +19,33 @@ const BASE_TABS = [
   { key: 'reports', label: 'Reports' },
 ];
 
+function ThemePicker() {
+  const { theme, setTheme, themes } = useTheme();
+  return (
+    <div className="theme-picker" role="group" aria-label="Choose color theme">
+      {themes.map((t) => (
+        <button
+          key={t.key}
+          className={`theme-swatch ${theme === t.key ? 'theme-swatch--active' : ''}`}
+          style={{ background: t.swatchColor }}
+          onClick={() => setTheme(t.key)}
+          aria-label={`${t.label} theme`}
+          aria-pressed={theme === t.key}
+          title={t.label}
+        />
+      ))}
+    </div>
+  );
+}
+
 function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject }) {
   return (
     <div
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: 'var(--space-3) var(--space-5)', borderBottom: 'var(--border-width) solid var(--color-ink)',
+        padding: 'var(--space-3) var(--space-5)',
+        boxShadow: 'var(--shadow-resting)',
+        position: 'relative', zIndex: 10,
         background: 'var(--color-paper-raised)', flexWrap: 'wrap', gap: 'var(--space-2)',
       }}
     >
@@ -45,7 +61,8 @@ function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject }) {
           </button>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+        <ThemePicker />
         <button onClick={onSwitchProject}>Switch project</button>
         <button onClick={onSignOut}>Sign out</button>
       </div>
@@ -118,8 +135,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export function LoginPage() {
   const { signIn } = useAuth();
+  const { theme, setTheme, themes } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -22,7 +24,23 @@ export function LoginPage() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-5)', position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 'var(--space-5)', right: 'var(--space-5)' }}>
+        <div className="theme-picker" role="group" aria-label="Choose color theme">
+          {themes.map((t) => (
+            <button
+              key={t.key}
+              className={`theme-swatch ${theme === t.key ? 'theme-swatch--active' : ''}`}
+              style={{ background: t.swatchColor }}
+              onClick={() => setTheme(t.key)}
+              aria-label={`${t.label} theme`}
+              aria-pressed={theme === t.key}
+              title={t.label}
+            />
+          ))}
+        </div>
+      </div>
+
       <div className="ticket" style={{ width: '100%', maxWidth: 380 }}>
         <h1 style={{ marginBottom: 'var(--space-1)' }}>SiteTracker</h1>
         <p style={{ color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-6)' }}>

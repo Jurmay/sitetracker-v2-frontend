@@ -1,182 +1,321 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..900&family=Inter:wght@380;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+/* ============================================================
+   THEME SYSTEM
+   Four switchable themes, set via <html data-theme="...">.
+   Every component below references these custom property NAMES only -
+   never a literal hex value - so adding/adjusting a theme never
+   requires touching component code. Semantic colors (survey-green for
+   verified/settled, brick-red for rejected/locked) are held FIXED
+   across all themes on purpose: they encode workflow meaning, not
+   brand identity, and changing them per-theme would make status
+   stamps misleading (e.g. a "Green" theme where everything is green,
+   including rejections, would defeat the point of the color coding).
+   Only the PRIMARY accent (used for primary actions, active nav, the
+   ledger-header notch) varies between Light/Dark/Green/Blue.
+   ============================================================ */
 
 :root {
-  /* ---- Color: drawn from the job site, not a SaaS palette ---- */
-  --color-ink: #2B2825;          /* wet concrete / rebar - primary text & dark surfaces */
-  --color-paper: #F5F2EA;        /* limewash white - background */
-  --color-paper-raised: #FFFFFF; /* card surfaces, slightly lifted off the paper */
-  --color-safety: #C2622A;       /* site-safety burnt orange - primary actions */
-  --color-safety-deep: #9C4E22;  /* pressed/hover state of safety orange */
-  --color-survey: #5B7A6B;       /* surveyor green - success, verified, settled */
-  --color-survey-deep: #46604F;
-  --color-brick: #A33B2E;        /* brick red - alerts, locks, overdue, rejected */
-  --color-brick-deep: #832D23;
-  --color-aggregate: #8C8579;    /* aggregate grey - borders, secondary text */
-  --color-aggregate-light: #D9D4C8;
-  --color-aggregate-faint: #EAE6DB;
+  /* ---- Light (default): job-site paper ---- */
+  --color-ink: #1C1815;
+  --color-paper: #EDE7DC;
+  --color-paper-raised: #FFFFFF;
+  --color-paper-sunken: #F7F3EA;
+  --color-surface-active: #FFFFFF;
+  --color-surface-lifted: #FFFFFF;
 
-  /* ---- Type ---- */
-  --font-display: 'Fraunces', serif;     /* headings only - has weight, not neutral */
+  --color-primary: #D6661F;
+  --color-primary-deep: #A84F18;
+  --color-primary-light: #F2A565;
+  --color-on-primary: #FFFFFF;
+
+  /* Semantic - fixed across all themes */
+  --color-survey: #347459;
+  --color-survey-deep: #245840;
+  --color-survey-light: #6FAE8C;
+  --color-brick: #B62F1C;
+  --color-brick-deep: #8A2415;
+
+  --color-aggregate: #756D64;
+  --color-aggregate-light: #D6CFC1;
+  --color-aggregate-faint: #E8E2D3;
+
+  --font-display: 'Fraunces', serif;
   --font-body: 'Inter', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace; /* every number, amount, ID renders here */
+  --font-mono: 'IBM Plex Mono', monospace;
 
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.375rem;
-  --text-2xl: 1.75rem;
-  --text-3xl: 2.25rem;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 1rem;
+  --text-lg: 1.1875rem; --text-xl: 1.5rem; --text-2xl: 2.125rem; --text-3xl: 2.75rem;
 
-  /* ---- Spacing & shape ---- */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
-  --space-8: 3rem;
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+  --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-8: 3rem;
 
-  --radius-sm: 3px;   /* deliberately tight - this is work-order paper, not a soft app */
-  --radius-md: 6px;
+  --radius-sm: 7px; --radius-md: 12px; --radius-lg: 16px;
+  --border-width: 1.5px;
 
-  --border-width: 1.5px; /* slightly thick - reads as printed card stock, not a thin hairline */
+  --shadow-sunken: inset 0 1px 3px rgba(28, 24, 21, 0.06);
+  --shadow-resting: 0 1px 2px rgba(28,24,21,0.05), 0 6px 14px -4px rgba(28,24,21,0.10);
+  --shadow-active: 0 2px 4px rgba(28,24,21,0.07), 0 14px 28px -6px rgba(28,24,21,0.20), 0 0 0 1px rgba(214,102,31,0.08);
+  --shadow-lifted: 0 4px 8px rgba(28,24,21,0.09), 0 20px 40px -8px rgba(28,24,21,0.24);
+  --shadow-inset: inset 0 1px 2px rgba(28,24,21,0.07);
+  --highlight-top: inset 0 1px 0 rgba(255,255,255,0.6);
+
+  --bg-image:
+    radial-gradient(circle at 15% 0%, rgba(214,102,31,0.06), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(52,116,89,0.05), transparent 38%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0, 0 0 0 0 0, 0 0 0 0 0, 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-* {
-  box-sizing: border-box;
+/* ---- Dark: job-site night - elevation via luminance, not shadow ---- */
+[data-theme="dark"] {
+  --color-ink: #ECE6D8;
+  --color-paper: #16140F;
+  --color-paper-raised: #211D17;
+  --color-paper-sunken: #1B1812;
+  --color-surface-active: #2B2620;
+  --color-surface-lifted: #353026;
+
+  --color-primary: #E0894F;
+  --color-primary-deep: #C46E38;
+  --color-primary-light: #F0AD7C;
+  --color-on-primary: #1A1006;
+
+  --color-survey: #6FAE8C;
+  --color-survey-deep: #8FC4A6;
+  --color-survey-light: #4F8068;
+  --color-brick: #D97A68;
+  --color-brick-deep: #E89687;
+
+  --color-aggregate: #A39B8C;
+  --color-aggregate-light: #3A352C;
+  --color-aggregate-faint: #2A2620;
+
+  --border-width: 1px;
+  --shadow-sunken: none;
+  --shadow-resting: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-active: 0 1px 2px rgba(0,0,0,0.4), 0 0 0 1px rgba(224,137,79,0.15);
+  --shadow-lifted: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.3);
+  --highlight-top: inset 0 1px 0 rgba(255,255,255,0.04);
+
+  --bg-image:
+    radial-gradient(circle at 15% 0%, rgba(224,137,79,0.05), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(111,174,140,0.04), transparent 38%);
 }
 
-html, body, #root {
-  margin: 0;
-  min-height: 100%;
+/* ---- Green: same light paper system, primary accent shifted to a
+   confident forest green instead of safety-orange. Semantic survey
+   green stays distinct (deeper/different hue) from this primary so
+   "verified" stamps don't visually disappear into the theme's own
+   chrome - kept it teal-leaning where the semantic one is olive-leaning. ---- */
+[data-theme="green"] {
+  --color-ink: #16241A;
+  --color-paper: #E7ECDE;
+  --color-paper-raised: #FFFFFF;
+  --color-paper-sunken: #F2F5EA;
+  --color-surface-active: #FFFFFF;
+  --color-surface-lifted: #FFFFFF;
+
+  --color-primary: #1F7A52;
+  --color-primary-deep: #155C3D;
+  --color-primary-light: #4DA37C;
+  --color-on-primary: #FFFFFF;
+
+  --color-survey: #6B7A2E;
+  --color-survey-deep: #4F5A1F;
+  --color-survey-light: #97A85C;
+  --color-brick: #B6391F;
+  --color-brick-deep: #8A2A16;
+
+  --color-aggregate: #6D766A;
+  --color-aggregate-light: #CFD6C6;
+  --color-aggregate-faint: #E1E6D8;
+
+  --shadow-sunken: inset 0 1px 3px rgba(26,31,26,0.06);
+  --shadow-resting: 0 1px 2px rgba(26,31,26,0.05), 0 6px 14px -4px rgba(26,31,26,0.10);
+  --shadow-active: 0 2px 4px rgba(26,31,26,0.07), 0 14px 28px -6px rgba(26,31,26,0.20), 0 0 0 1px rgba(31,122,82,0.10);
+  --shadow-lifted: 0 4px 8px rgba(26,31,26,0.09), 0 20px 40px -8px rgba(26,31,26,0.24);
+  --shadow-inset: inset 0 1px 2px rgba(26,31,26,0.07);
+  --highlight-top: inset 0 1px 0 rgba(255,255,255,0.6);
+
+  --bg-image:
+    radial-gradient(circle at 15% 0%, rgba(31,122,82,0.07), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(107,122,46,0.05), transparent 38%);
 }
+
+/* ---- Blue: same light paper system, primary accent shifted to a
+   confident slate/marine blue. ---- */
+[data-theme="blue"] {
+  --color-ink: #11233A;
+  --color-paper: #E4EAF1;
+  --color-paper-raised: #FFFFFF;
+  --color-paper-sunken: #EEF2F7;
+  --color-surface-active: #FFFFFF;
+  --color-surface-lifted: #FFFFFF;
+
+  --color-primary: #275C8C;
+  --color-primary-deep: #1B4569;
+  --color-primary-light: #5685AD;
+  --color-on-primary: #FFFFFF;
+
+  --color-survey: #347459;
+  --color-survey-deep: #245840;
+  --color-survey-light: #6FAE8C;
+  --color-brick: #B6391F;
+  --color-brick-deep: #8A2A16;
+
+  --color-aggregate: #6B7280;
+  --color-aggregate-light: #CDD3DC;
+  --color-aggregate-faint: #DEE3E9;
+
+  --shadow-sunken: inset 0 1px 3px rgba(24,27,31,0.06);
+  --shadow-resting: 0 1px 2px rgba(24,27,31,0.05), 0 6px 14px -4px rgba(24,27,31,0.10);
+  --shadow-active: 0 2px 4px rgba(24,27,31,0.07), 0 14px 28px -6px rgba(24,27,31,0.20), 0 0 0 1px rgba(39,92,140,0.10);
+  --shadow-lifted: 0 4px 8px rgba(24,27,31,0.09), 0 20px 40px -8px rgba(24,27,31,0.24);
+  --shadow-inset: inset 0 1px 2px rgba(24,27,31,0.07);
+  --highlight-top: inset 0 1px 0 rgba(255,255,255,0.6);
+
+  --bg-image:
+    radial-gradient(circle at 15% 0%, rgba(39,92,140,0.07), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(52,116,89,0.05), transparent 38%);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
 
 body {
-  background: var(--color-paper);
+  background-color: var(--color-paper);
+  background-image: var(--bg-image);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-body);
+  font-weight: 380;
   font-size: var(--text-base);
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
+p, label, span, li, td, th { font-weight: 380; }
 
-h1, h2, h3 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  color: var(--color-ink);
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; color: var(--color-ink); margin: 0; letter-spacing: -0.018em; }
 h1 { font-size: var(--text-2xl); }
 h2 { font-size: var(--text-xl); }
-h3 { font-size: var(--text-lg); }
+h3 { font-size: var(--text-lg); font-weight: 600; }
 
-.numeric, .mono {
-  font-family: var(--font-mono);
+.ledger-header {
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-6) 0 var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 2.5px solid var(--color-ink);
+  position: relative;
 }
+[data-theme="dark"] .ledger-header { border-bottom: 2px solid var(--color-aggregate-light); }
+.ledger-header::after {
+  content: ''; position: absolute; bottom: -2.5px; left: 0;
+  width: 28px; height: 5px; background: var(--color-primary);
+  border-radius: 0 0 3px 3px;
+}
+[data-theme="dark"] .ledger-header::after { bottom: -2px; height: 4px; }
+.ledger-header h3 {
+  text-transform: uppercase; font-size: var(--text-sm); letter-spacing: 0.09em;
+  font-family: var(--font-body); font-weight: 700; color: var(--color-ink);
+  flex: 1 1 auto; min-width: 0;
+}
+.ledger-header .ledger-header-note {
+  font-size: var(--text-xs); color: var(--color-aggregate); font-style: italic;
+  font-weight: 380; flex: 0 1 auto; text-align: right;
+}
+
+.numeric, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 button {
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: var(--border-width) solid var(--color-ink);
-  padding: var(--space-3) var(--space-5);
-  cursor: pointer;
-  background: var(--color-paper-raised);
-  color: var(--color-ink);
-  transition: transform 0.08s ease, background 0.12s ease;
+  font-family: var(--font-body); font-size: var(--text-sm); font-weight: 600;
+  border-radius: var(--radius-sm); border: var(--border-width) solid var(--color-aggregate-light);
+  padding: var(--space-3) var(--space-5); cursor: pointer;
+  background: var(--color-paper-raised); color: var(--color-ink);
+  box-shadow: var(--shadow-resting), var(--highlight-top);
+  transition: transform 0.14s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
-
-button:hover { background: var(--color-aggregate-faint); }
-button:active { transform: translateY(1px); }
-button:focus-visible {
-  outline: 3px solid var(--color-safety);
-  outline-offset: 2px;
-}
+button:hover { border-color: var(--color-ink); box-shadow: var(--shadow-active), var(--highlight-top); transform: translateY(-1px); }
+[data-theme="dark"] button:hover { background: var(--color-surface-lifted); border-color: var(--color-aggregate); }
+button:active { transform: translateY(1px); box-shadow: var(--shadow-inset); }
+button:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
 
 button.primary {
-  background: var(--color-safety);
-  border-color: var(--color-safety-deep);
-  color: var(--color-paper);
+  background: linear-gradient(180deg, var(--color-primary-light) 0%, var(--color-primary) 55%, var(--color-primary-deep) 100%);
+  border-color: var(--color-primary-deep); color: var(--color-on-primary); font-weight: 700;
+  box-shadow: var(--shadow-active), 0 1px 0 rgba(255,255,255,0.25) inset;
 }
-button.primary:hover { background: var(--color-safety-deep); }
-
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+button.primary:hover {
+  background: linear-gradient(180deg, var(--color-primary-light) 0%, var(--color-primary) 40%, var(--color-primary-deep) 100%);
+  box-shadow: var(--shadow-lifted), 0 1px 0 rgba(255,255,255,0.3) inset;
 }
+button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none !important; }
 
 input, select, textarea {
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  border: var(--border-width) solid var(--color-aggregate-light);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-  background: var(--color-paper-raised);
-  color: var(--color-ink);
-  width: 100%;
+  font-family: var(--font-body); font-weight: 380; font-size: var(--text-base);
+  border: var(--border-width) solid var(--color-aggregate-light); border-radius: var(--radius-sm);
+  padding: var(--space-3); background: var(--color-paper-sunken); color: var(--color-ink);
+  width: 100%; box-shadow: var(--shadow-sunken);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
 }
-
 input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 3px solid var(--color-safety);
-  outline-offset: 1px;
-  border-color: var(--color-safety);
+  outline: none; border-color: var(--color-primary); background: var(--color-paper-raised);
+  box-shadow: var(--shadow-sunken), 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
-/* ---- The work-order card: the base unit of the whole app ---- */
 .ticket {
   background: var(--color-paper-raised);
-  border: var(--border-width) solid var(--color-ink);
+  border: 1px solid var(--color-aggregate-light);
   border-radius: var(--radius-md);
-  padding: var(--space-5);
-  position: relative;
+  padding: var(--space-5); position: relative;
+  box-shadow: var(--shadow-resting), var(--highlight-top);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.ticket:hover { box-shadow: var(--shadow-active), var(--highlight-top); transform: translateY(-2px); }
+[data-theme="dark"] .ticket:hover { background: var(--color-surface-lifted); }
+.ticket::after {
+  content: ''; position: absolute; top: 0; right: 0; width: 20px; height: 20px;
+  background: linear-gradient(135deg, transparent 50%, var(--color-aggregate-faint) 50%);
+  border-bottom-left-radius: var(--radius-sm);
+  box-shadow: -1px 1px 1.5px rgba(28,24,21,0.10);
+  pointer-events: none;
 }
 
-/* ---- Signature element: the ink-stamp status badge ----
-   Every workflow status renders through this one component family.
-   Slightly rotated and roughened, evoking a real rubber stamp on
-   real paperwork - this is the one bold/maximalist gesture in an
-   otherwise disciplined, quiet interface. */
+.ticket--sunken { background: var(--color-paper-sunken); box-shadow: var(--shadow-sunken); }
+.ticket--sunken:hover { box-shadow: var(--shadow-sunken); transform: none; background: var(--color-paper-sunken); }
+
+.ticket--active { background: var(--color-surface-active); box-shadow: var(--shadow-active), var(--highlight-top); }
+.ticket--active:hover { background: var(--color-surface-lifted); box-shadow: var(--shadow-lifted), var(--highlight-top); }
+
+.ticket--accent-safety  { border-left: 5px solid var(--color-primary); }
+.ticket--accent-survey  { border-left: 5px solid var(--color-survey); }
+.ticket--accent-brick   { border-left: 5px solid var(--color-brick); }
+.ticket--accent-ink     { border-left: 5px solid var(--color-ink); }
+[data-theme="dark"] .ticket--accent-safety,
+[data-theme="dark"] .ticket--accent-survey,
+[data-theme="dark"] .ticket--accent-brick,
+[data-theme="dark"] .ticket--accent-ink { border-left-width: 4px; }
+
+.kpi-card { display: flex; flex-direction: column; gap: var(--space-2); }
+.kpi-card .kpi-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.09em; color: var(--color-aggregate); font-weight: 700; }
+.kpi-card .kpi-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-2xl); font-weight: 700; line-height: 1; color: var(--color-ink); }
+
 .stamp {
-  display: inline-block;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: var(--text-sm);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: var(--space-2) var(--space-4);
-  border: 2.5px solid currentColor;
-  border-radius: 3px;
-  transform: rotate(-3deg);
-  position: relative;
-  text-shadow: 0.5px 0.5px 0 currentColor; /* slight ink-bleed weight */
+  display: inline-block; font-family: var(--font-display); font-weight: 800;
+  font-size: var(--text-sm); letter-spacing: 0.1em; text-transform: uppercase;
+  padding: var(--space-2) var(--space-4); border: 2.5px solid currentColor; border-radius: 4px;
+  transform: rotate(-3deg); position: relative;
+  text-shadow: 0.5px 0.5px 0 currentColor;
+  filter: drop-shadow(2px 3px 2px rgba(28,24,21,0.2));
 }
-
-.stamp::before {
-  /* a second, more visibly offset outline at a different angle -
-     two overlapping impressions, the way a real hand-stamp rarely
-     lands perfectly twice */
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border: 1.5px solid currentColor;
-  opacity: 0.35;
-  border-radius: 3px;
-  transform: rotate(4deg);
-}
-
-.stamp::after {
-  content: '';
-  position: absolute;
-  inset: -1.5px;
-  border: 1px solid currentColor;
-  opacity: 0.2;
-  border-radius: 2px;
-  transform: rotate(-1.5deg) scale(1.04);
-}
+[data-theme="dark"] .stamp { border-width: 2px; text-shadow: none; filter: none; }
+.stamp--inline { font-size: var(--text-xs); padding: 2px var(--space-2); letter-spacing: 0.06em; }
+.stamp::before { content: ''; position: absolute; inset: -3px; border: 1.5px solid currentColor; opacity: 0.35; border-radius: 4px; transform: rotate(4deg); }
+.stamp::after { content: ''; position: absolute; inset: -1.5px; border: 1px solid currentColor; opacity: 0.2; border-radius: 3px; transform: rotate(-1.5deg) scale(1.04); }
+[data-theme="dark"] .stamp::before { opacity: 0.3; border-width: 1px; }
+[data-theme="dark"] .stamp::after { opacity: 0.18; }
 
 .stamp--pending   { color: var(--color-aggregate); transform: rotate(-3deg); }
 .stamp--verified  { color: var(--color-survey); transform: rotate(2deg); }
@@ -186,14 +325,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .stamp--rejected  { color: var(--color-brick); transform: rotate(3.5deg); }
 .stamp--locked    { color: var(--color-brick-deep); transform: rotate(-3.5deg); }
 
+/* ---- Theme picker control ---- */
+.theme-picker {
+  display: flex; gap: 6px; align-items: center;
+  padding: 4px; border-radius: var(--radius-sm);
+  background: var(--color-paper-sunken);
+  border: 1px solid var(--color-aggregate-light);
+}
+.theme-picker button.theme-swatch {
+  width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  box-shadow: none; transform: none !important;
+}
+.theme-picker button.theme-swatch:hover { transform: none !important; box-shadow: 0 0 0 2px var(--color-aggregate-light) !important; }
+.theme-swatch--active { box-shadow: 0 0 0 2px var(--color-ink) !important; }
+
 .sr-only {
-  position: absolute;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
-  overflow: hidden;
-  clip: rect(0,0,0,0);
-  white-space: nowrap;
-  border: 0;
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
