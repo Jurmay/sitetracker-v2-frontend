@@ -52,8 +52,20 @@ export function AdminPage({ projectId }) {
     setSuccess(null);
     setActingId(id);
     try {
-      await fn();
-      setSuccess('Action completed.');
+      const result = await fn();
+      // BUG (caught while testing the allstore.us domain switch): the
+      // backend has carried a real, specific _email_warning field on
+      // fund requisition approvals since the day it was built (no
+      // accounts_department_email configured, or the send itself
+      // failed) - this UI never read it, so every approval silently
+      // showed the same generic "Action completed" regardless of
+      // whether the email actually went out. Surfaced now rather than
+      // discarded.
+      if (result && result._email_warning) {
+        setError(result._email_warning);
+      } else {
+        setSuccess('Action completed.');
+      }
       loadAll();
     } catch (err) {
       setError(err.message);
@@ -158,12 +170,12 @@ export function AdminPage({ projectId }) {
       <h1 style={{ marginBottom: 'var(--space-6)' }}>Admin</h1>
 
       {success && (
-        <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>{success}</p>
         </div>
       )}
       {error && (
-        <div className="ticket" style={{ borderColor: 'var(--color-brick)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-brick)', margin: 0 }}>{error}</p>
         </div>
       )}
@@ -172,10 +184,10 @@ export function AdminPage({ projectId }) {
         <p style={{ color: 'var(--color-aggregate)' }}>Loading…</p>
       ) : (
         <>
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Advances awaiting your approval</h3>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
-            These have already been verified by the Cashier. Approving lets the Cashier disburse the funds.
-          </p>
+          <div className="ledger-header">
+            <h3>Advances awaiting your approval</h3>
+            <span className="ledger-header-note">verified by Cashier &middot; approving allows disbursement</span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
             {pendingApproval.map((a) => (
               <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -216,10 +228,10 @@ export function AdminPage({ projectId }) {
             )}
           </div>
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Fund requisitions awaiting your approval</h3>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
-            Approving generates a record and emails the project's Accounts contact, if one is configured.
-          </p>
+          <div className="ledger-header">
+            <h3>Fund requisitions awaiting your approval</h3>
+            <span className="ledger-header-note">generates a receipt &middot; emails Accounts if configured</span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {pendingFundApproval.map((f) => (
               <div key={f.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -245,7 +257,7 @@ export function AdminPage({ projectId }) {
             )}
           </div>
 
-          <h3 style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-3)' }}>BOQ setup</h3>
+          <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}><h3>BOQ setup</h3></div>
 
           <form onSubmit={handleCreateSection} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-3)' }}>Add a section</p>
@@ -328,7 +340,7 @@ export function AdminPage({ projectId }) {
             </div>
           )}
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Users</h3>
+          <div className="ledger-header"><h3>Users</h3></div>
 
           <form onSubmit={handleAssignRole} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Assign role to an existing user</p>
