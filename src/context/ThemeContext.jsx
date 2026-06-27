@@ -13,7 +13,7 @@ export function ThemeProvider({ children }) {
   // Real app, not a Claude-generated artifact - localStorage is the
   // correct, normal tool here for a user preference that should
   // survive a page refresh and a new session.
-  const [theme, setTheme] = useState(() => localStorage.getItem('sitetracker-theme') || 'light');
+  const [theme, setTheme] = useState(() => localStorage.getItem('sitetracker-theme') || 'blue');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
