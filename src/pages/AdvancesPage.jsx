@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { StatusStamp } from '../components/StatusStamp';
+import { useAuth } from '../context/AuthContext';
 
 export function AdvancesPage({ projectId }) {
+  const { user } = useAuth();
   const [boqItems, setBoqItems] = useState([]);
   const [subcontracts, setSubcontracts] = useState([]);
   const [advances, setAdvances] = useState([]);
@@ -45,7 +47,7 @@ export function AdvancesPage({ projectId }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(loadAll, [projectId]);
+  useEffect(loadAll, [projectId, user?.id]);
 
   async function handleSubmitAdvance(e) {
     e.preventDefault();
@@ -110,12 +112,12 @@ export function AdvancesPage({ projectId }) {
       <h1 style={{ marginBottom: 'var(--space-6)' }}>Advances</h1>
 
       {success && (
-        <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>{success}</p>
         </div>
       )}
       {error && (
-        <div className="ticket" style={{ borderColor: 'var(--color-brick)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-brick)', margin: 0 }}>{error}</p>
         </div>
       )}
@@ -232,7 +234,9 @@ export function AdvancesPage({ projectId }) {
             </form>
           )}
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Your requisitions</h3>
+          <div className="ledger-header">
+            <h3>Your requisitions</h3>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {advances.map((a) => (
               <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -252,7 +256,9 @@ export function AdvancesPage({ projectId }) {
 
           {settlements.length > 0 && (
             <>
-              <h3 style={{ marginTop: 'var(--space-6)', marginBottom: 'var(--space-3)' }}>Your settlements</h3>
+              <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}>
+                <h3>Your settlements</h3>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {settlements.map((s) => (
                   <div key={s.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

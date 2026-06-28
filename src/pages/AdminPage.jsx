@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { useAuth } from '../context/AuthContext';
 
 export function AdminPage({ projectId }) {
+  const { user } = useAuth();
   const [advances, setAdvances] = useState([]);
   const [fundRequisitions, setFundRequisitions] = useState([]);
   const [sections, setSections] = useState([]);
@@ -45,7 +47,7 @@ export function AdminPage({ projectId }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(loadAll, [projectId]);
+  useEffect(loadAll, [projectId, user?.id]);
 
   async function runAction(id, fn) {
     setError(null);

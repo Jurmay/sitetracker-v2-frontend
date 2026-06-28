@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { StatusStamp } from '../components/StatusStamp';
+import { useAuth } from '../context/AuthContext';
 
 export function CashierPage({ projectId }) {
+  const { user } = useAuth();
   const [advances, setAdvances] = useState([]);
   const [settlements, setSettlements] = useState([]);
   const [cashbook, setCashbook] = useState(null);
@@ -35,7 +37,7 @@ export function CashierPage({ projectId }) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(loadAll, [projectId]);
+  useEffect(loadAll, [projectId, user?.id]);
 
   async function runAction(id, fn) {
     setError(null);
@@ -78,12 +80,12 @@ export function CashierPage({ projectId }) {
       <h1 style={{ marginBottom: 'var(--space-6)' }}>Cashier</h1>
 
       {success && (
-        <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>{success}</p>
         </div>
       )}
       {error && (
-        <div className="ticket" style={{ borderColor: 'var(--color-brick)', marginBottom: 'var(--space-5)' }}>
+        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-brick)', margin: 0 }}>{error}</p>
         </div>
       )}
@@ -113,7 +115,7 @@ export function CashierPage({ projectId }) {
             </div>
           )}
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Advances awaiting verification</h3>
+          <div className="ledger-header"><h3>Advances awaiting verification</h3></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
             {pendingVerification.map((a) => (
               <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -153,7 +155,7 @@ export function CashierPage({ projectId }) {
             )}
           </div>
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Approved advances awaiting disbursement</h3>
+          <div className="ledger-header"><h3>Approved advances awaiting disbursement</h3></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
             {advances.filter((a) => a.status === 'approved').map((a) => (
               <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -179,7 +181,7 @@ export function CashierPage({ projectId }) {
             )}
           </div>
 
-          <h3 style={{ marginBottom: 'var(--space-3)' }}>Settlements awaiting verification</h3>
+          <div className="ledger-header"><h3>Settlements awaiting verification</h3></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
             {pendingSettlementVerification.map((s) => (
               <div key={s.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -236,7 +238,7 @@ export function CashierPage({ projectId }) {
 
           {fundRequisitions.length > 0 && (
             <>
-              <h3 style={{ marginBottom: 'var(--space-3)' }}>Your fund requisitions</h3>
+              <div className="ledger-header"><h3>Your fund requisitions</h3></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {fundRequisitions.map((f) => (
                   <div key={f.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
