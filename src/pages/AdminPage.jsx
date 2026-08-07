@@ -21,6 +21,7 @@ export function AdminPage({ projectId }) {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteRole, setInviteRole] = useState('site_coordinator');
+  const [resetEmail, setResetEmail] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState(null);
@@ -157,6 +158,25 @@ export function AdminPage({ projectId }) {
       setSuccess(`Invite sent to ${inviteEmail}.`);
       setInviteEmail('');
       setInviteName('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setSubmitting(true);
+    try {
+      await apiFetch('/api/admin/users/reset-password', {
+        method: 'POST',
+        body: { project_id: projectId, email: resetEmail },
+      });
+      setSuccess(`Password reset email sent to ${resetEmail}.`);
+      setResetEmail('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -401,6 +421,24 @@ export function AdminPage({ projectId }) {
             <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>
               Send invite
             </button>
+          </form>
+
+          <form onSubmit={handleResetPassword} className="ticket" style={{ marginTop: 'var(--space-4)' }}>
+            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Reset password</p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
+              For someone who already has an account but is locked out. Sends them an email to set a new password &mdash; no password is ever entered or shown here.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="their@email.com"
+                required
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="primary" disabled={submitting}>Send reset email</button>
+            </div>
           </form>
         </>
       )}
