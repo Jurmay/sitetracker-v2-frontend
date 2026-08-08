@@ -12,6 +12,25 @@ import { AdminPage } from './pages/AdminPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ProjectPickerPage } from './pages/ProjectPickerPage';
 
+// Improvement #2 & #3: human-readable role labels + page titles
+const ROLE_LABELS = {
+  company_owner: 'Company Owner',
+  admin: 'Admin',
+  site_coordinator: 'Site Coordinator',
+  cashier: 'Cashier',
+  viewer: 'Viewer',
+};
+
+const TAB_TITLES = {
+  dashboard: 'Dashboard',
+  'master-roll': 'Master Roll',
+  progress: 'Progress',
+  reports: 'Reports',
+  advances: 'Advances',
+  cashier: 'Cashier',
+  admin: 'Admin',
+};
+
 const BASE_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'master-roll', label: 'Master Roll' },
@@ -38,35 +57,144 @@ function ThemePicker() {
   );
 }
 
-function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject }) {
+// Improvement #6: fixed mobile navigation - role badge in top bar,
+// tabs moved to a dedicated bottom-style tab row with proper sizing
+function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, roles }) {
+  const primaryRole = roles[0];
+  const roleLabel = primaryRole ? ROLE_LABELS[primaryRole] : null;
+
   return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: 'var(--space-3) var(--space-5)',
+    <>
+      {/* Top bar: identity strip */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 'var(--space-2) var(--space-4)',
+        background: 'var(--color-paper-raised)',
+        borderBottom: '1px solid var(--color-aggregate-light)',
         boxShadow: 'var(--shadow-resting)',
-        position: 'relative', zIndex: 10,
-        background: 'var(--color-paper-raised)', flexWrap: 'wrap', gap: 'var(--space-2)',
-      }}
-    >
-      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        {tabs.map((tab) => (
+        position: 'relative',
+        zIndex: 10,
+        gap: 'var(--space-2)',
+        flexWrap: 'wrap',
+        minHeight: 48,
+      }}>
+        {/* Left: app name + role badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <span style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: 'var(--text-base)',
+            letterSpacing: '-0.01em',
+          }}>
+            SiteTracker
+          </span>
+          {/* Improvement #2: role badge always visible in top bar */}
+          {roleLabel && (
+            <span style={{
+              display: 'inline-block',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              padding: '2px 8px',
+              borderRadius: 4,
+              background: 'var(--color-primary)',
+              color: 'var(--color-on-primary)',
+              lineHeight: 1.6,
+              whiteSpace: 'nowrap',
+            }}>
+              {roleLabel}
+            </span>
+          )}
+        </div>
+
+        {/* Right: theme picker + actions */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
+          <ThemePicker />
           <button
-            key={tab.key}
-            onClick={() => onChangeTab(tab.key)}
-            className={activeTab === tab.key ? 'primary' : ''}
-            style={{ padding: 'var(--space-2) var(--space-4)' }}
+            onClick={onSwitchProject}
+            style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)' }}
           >
-            {tab.label}
+            Switch
           </button>
-        ))}
+          <button
+            onClick={onSignOut}
+            style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)' }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-        <ThemePicker />
-        <button onClick={onSwitchProject}>Switch project</button>
-        <button onClick={onSignOut}>Sign out</button>
+
+      {/* Improvement #6: dedicated tab row, scrollable on small screens,
+          tabs are evenly sized with minimum touch target height */}
+      <div style={{
+        display: 'flex',
+        overflowX: 'auto',
+        background: 'var(--color-paper-raised)',
+        borderBottom: '2px solid var(--color-aggregate-faint)',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        position: 'sticky',
+        top: 0,
+        zIndex: 9,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => onChangeTab(tab.key)}
+              aria-pressed={isActive}
+              style={{
+                flex: '1 0 auto',
+                minWidth: 72,
+                minHeight: 48,
+                padding: 'var(--space-2) var(--space-3)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 700 : 600,
+                border: 'none',
+                borderBottom: isActive
+                  ? '3px solid var(--color-primary)'
+                  : '3px solid transparent',
+                borderRadius: 0,
+                background: isActive ? 'var(--color-paper-sunken)' : 'transparent',
+                color: isActive ? 'var(--color-primary)' : 'var(--color-aggregate)',
+                boxShadow: 'none',
+                transform: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'color 0.14s, border-color 0.14s, background 0.14s',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      {/* Improvement #3: current page title shown below the tab strip */}
+      <div style={{
+        padding: 'var(--space-3) var(--space-5) var(--space-2)',
+        background: 'var(--color-paper)',
+      }}>
+        <p style={{
+          margin: 0,
+          fontSize: 'var(--text-xs)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.09em',
+          color: 'var(--color-aggregate)',
+          fontWeight: 700,
+          fontFamily: 'var(--font-body)',
+        }}>
+          {TAB_TITLES[activeTab] ?? ''}
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -78,11 +206,6 @@ function AppShell() {
 
   function selectProject(id) {
     setProjectId(id);
-    // Persist the choice in the URL, matching the existing pattern (so
-    // refreshing or sharing the link keeps working), without a full
-    // page reload - history.replaceState keeps the in-memory React
-    // state and the address bar in sync without re-running auth/data
-    // fetches that a navigation would otherwise trigger.
     const url = new URL(window.location.href);
     url.searchParams.set('project_id', id);
     window.history.replaceState({}, '', url);
@@ -104,13 +227,8 @@ function AppShell() {
     );
   }
 
-  if (!user) {
-    return <LoginPage />;
-  }
-
-  if (!projectId) {
-    return <ProjectPickerPage onSelectProject={selectProject} />;
-  }
+  if (!user) return <LoginPage />;
+  if (!projectId) return <ProjectPickerPage onSelectProject={selectProject} />;
 
   const tabs = [
     ...BASE_TABS,
@@ -121,14 +239,23 @@ function AppShell() {
 
   return (
     <div>
-      <NavBar tabs={tabs} activeTab={activeTab} onChangeTab={setActiveTab} onSignOut={signOut} onSwitchProject={switchProject} />
-      {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
-      {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
-      {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
-      {activeTab === 'reports' && <ReportsPage projectId={projectId} />}
-      {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
-      {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
-      {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
+      <NavBar
+        tabs={tabs}
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onSignOut={signOut}
+        onSwitchProject={switchProject}
+        roles={roles}
+      />
+      <div style={{ paddingBottom: 'var(--space-8)' }}>
+        {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
+        {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
+        {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
+        {activeTab === 'reports' && <ReportsPage projectId={projectId} />}
+        {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
+        {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
+        {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
+      </div>
     </div>
   );
 }

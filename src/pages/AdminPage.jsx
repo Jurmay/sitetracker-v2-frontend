@@ -2,6 +2,186 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { useAuth } from '../context/AuthContext';
 
+// Improvement #1: Permission Checkboxes panel
+// Fetches the report permission grid for a chosen user and lets admin
+// toggle each report on/off via PUT /api/dashboard/permissions
+function PermissionsPanel({ projectId }) {
+  const [targetUserId, setTargetUserId] = useState('');
+  const [targetEmail, setTargetEmail] = useState('');
+  const [permissions, setPermissions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(null); // report_key being saved
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
+  async function loadPermissions(userId) {
+    if (!userId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`/api/dashboard/permissions/${userId}`, {
+        params: { project_id: projectId },
+      });
+      setPermissions(data);
+    } catch (err) {
+      setError(err.message);
+      setPermissions([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLookup(e) {
+    e.preventDefault();
+    // The permissions endpoint takes a user_id, but admin knows emails.
+    // We use the admin users endpoint to get the user id by email first.
+    // Simpler UX: just enter the target user's email and we resolve it.
+    setError(null);
+    setPermissions([]);
+    setTargetUserId('');
+    setLoading(true);
+    try {
+      // Use assign-role as a way to get the profile - it will 404 if not found
+      // Instead we call my-role to get own id, then use a direct approach:
+      // Fetch own permissions to confirm project access, then get target user's
+      // permissions by calling the endpoint. We need the user_id though.
+      // Workaround: call the permissions endpoint for the email as typed.
+      // Actually, the backend expects a user_id UUID. We need to look it up.
+      // The cleanest path: POST to assign-role with the same role they already
+      // have (idempotent upsert) just to get the profile resolved. But that's
+      // wrong. Best we can do in the frontend without a dedicated "lookup by email"
+      // endpoint: ask the admin to paste the user's UID, or provide the email
+      // and we'll try to derive it from the project roles listing.
+      // For now, accept email and try the permissions endpoint with it as a hint;
+      // the endpoint will return 403 if not found which we surface clearly.
+      // TODO: add a /api/admin/users/lookup?email= endpoint to the backend for cleaner UX.
+      throw new Error('To view a user\'s permissions, paste their User ID (from Supabase Authentication → Users). Email lookup requires a backend endpoint not yet built.');
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  async function handleLookupById(e) {
+    e.preventDefault();
+    if (!targetUserId.trim()) return;
+    await loadPermissions(targetUserId.trim());
+  }
+
+  async function togglePermission(reportKey, currentlyGranted) {
+    setSaving(reportKey);
+    setError(null);
+    try {
+      await apiFetch('/api/dashboard/permissions', {
+        method: 'PUT',
+        params: { project_id: projectId },
+        body: {
+          user_id: targetUserId,
+          report_definition_key: reportKey,
+          granted: !currentlyGranted,
+        },
+      });
+      setSuccess(`${reportKey} ${!currentlyGranted ? 'granted' : 'revoked'}.`);
+      setPermissions((prev) =>
+        prev.map((p) =>
+          p.report_key === reportKey ? { ...p, granted: !currentlyGranted } : p
+        )
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  // Group by category
+  const byCategory = permissions.reduce((acc, p) => {
+    const cat = p.category ?? 'Other';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(p);
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}>
+        <h3>Report & Dashboard Permissions</h3>
+        <span className="ledger-header-note">control what each user can access</span>
+      </div>
+
+      {success && (
+        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-4)' }}>
+          <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontSize: 'var(--text-sm)' }}>{success}</p>
+        </div>
+      )}
+      {error && (
+        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-4)' }}>
+          <p style={{ color: 'var(--color-brick)', margin: 0, fontSize: 'var(--text-sm)' }}>{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleLookupById} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
+        <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>View/edit a user's permissions</p>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', margin: '0 0 var(--space-3)' }}>
+          Paste the user's ID from Supabase (Authentication → Users → UID column).
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <input
+            value={targetUserId}
+            onChange={(e) => setTargetUserId(e.target.value)}
+            placeholder="e.g. a08cc3d9-94c0-4fdd-..."
+            required
+            style={{ flex: 1 }}
+          />
+          <button type="submit" className="primary" disabled={loading}>
+            {loading ? 'Loading…' : 'Load'}
+          </button>
+        </div>
+      </form>
+
+      {permissions.length > 0 && (
+        <div className="ticket" style={{ marginBottom: 'var(--space-6)' }}>
+          {Object.entries(byCategory).map(([category, perms]) => (
+            <div key={category} style={{ marginBottom: 'var(--space-4)' }}>
+              <p style={{ fontWeight: 700, fontSize: 'var(--text-sm)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-aggregate)', margin: '0 0 var(--space-2)' }}>
+                {category}
+              </p>
+              {perms.map((p) => (
+                <label
+                  key={p.report_key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-2) 0',
+                    borderBottom: '1px solid var(--color-aggregate-faint)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={p.granted}
+                    disabled={saving === p.report_key}
+                    onChange={() => togglePermission(p.report_key, p.granted)}
+                    style={{ width: 18, height: 18, accentColor: 'var(--color-primary)', flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: 'var(--text-sm)', flex: 1 }}>{p.report_name}</span>
+                  {saving === p.report_key && (
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>saving…</span>
+                  )}
+                  {p.granted && saving !== p.report_key && (
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-survey-deep)', fontWeight: 600 }}>✓ Granted</span>
+                  )}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminPage({ projectId }) {
   const { user } = useAuth();
   const [advances, setAdvances] = useState([]);
@@ -56,14 +236,6 @@ export function AdminPage({ projectId }) {
     setActingId(id);
     try {
       const result = await fn();
-      // BUG (caught while testing the allstore.us domain switch): the
-      // backend has carried a real, specific _email_warning field on
-      // fund requisition approvals since the day it was built (no
-      // accounts_department_email configured, or the send itself
-      // failed) - this UI never read it, so every approval silently
-      // showed the same generic "Action completed" regardless of
-      // whether the email actually went out. Surfaced now rather than
-      // discarded.
       if (result && result._email_warning) {
         setError(result._email_warning);
       } else {
@@ -77,115 +249,67 @@ export function AdminPage({ projectId }) {
     }
   }
 
+  async function handleRejectAdvance(id) {
+    const remarks = window.prompt('Reason for rejecting this advance:');
+    if (remarks) {
+      runAction(id, () =>
+        apiFetch(`/api/financial/advances/${id}/reject`, { method: 'POST', body: { remarks } })
+      );
+    }
+  }
+
   async function handleCreateSection(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
+    setError(null); setSuccess(null); setSubmitting(true);
     try {
-      await apiFetch('/api/boq/sections', {
-        method: 'POST',
-        body: { project_id: projectId, name: newSectionName, sort_order: sections.length },
-      });
-      setSuccess('Section added.');
-      setNewSectionName('');
-      loadAll();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      await apiFetch('/api/boq/sections', { method: 'POST', body: { project_id: projectId, name: newSectionName, sort_order: sections.length } });
+      setSuccess('Section added.'); setNewSectionName(''); loadAll();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
   }
 
   async function handleCreateItem(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
+    setError(null); setSuccess(null); setSubmitting(true);
     try {
       await apiFetch('/api/boq/items', {
         method: 'POST',
-        body: {
-          section_id: newItemSectionId,
-          description: newItemDescription,
-          unit: newItemUnit,
-          quantity: parseFloat(newItemQuantity),
-          rate: parseFloat(newItemRate),
-        },
+        body: { section_id: newItemSectionId, description: newItemDescription, unit: newItemUnit, quantity: parseFloat(newItemQuantity), rate: parseFloat(newItemRate) },
       });
-      setSuccess('Work item added.');
-      setNewItemDescription('');
-      setNewItemUnit('');
-      setNewItemQuantity('');
-      setNewItemRate('');
-      loadAll();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      setSuccess('Work item added.'); setNewItemDescription(''); setNewItemUnit(''); setNewItemQuantity(''); setNewItemRate(''); loadAll();
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
   }
 
   async function handleAssignRole(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
+    setError(null); setSuccess(null); setSubmitting(true);
     try {
-      await apiFetch('/api/admin/users/assign-role', {
-        method: 'POST',
-        body: { project_id: projectId, email: assignEmail, role: assignRole },
-      });
-      setSuccess(`${assignEmail} granted ${assignRole} on this project.`);
-      setAssignEmail('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      await apiFetch('/api/admin/users/assign-role', { method: 'POST', body: { project_id: projectId, email: assignEmail, role: assignRole } });
+      setSuccess(`${assignEmail} granted ${assignRole} on this project.`); setAssignEmail('');
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
   }
 
   async function handleInviteUser(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
+    setError(null); setSuccess(null); setSubmitting(true);
     try {
-      await apiFetch('/api/admin/users/invite', {
-        method: 'POST',
-        body: { project_id: projectId, email: inviteEmail, name: inviteName, role: inviteRole },
-      });
-      setSuccess(`Invite sent to ${inviteEmail}.`);
-      setInviteEmail('');
-      setInviteName('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      await apiFetch('/api/admin/users/invite', { method: 'POST', body: { project_id: projectId, email: inviteEmail, name: inviteName, role: inviteRole } });
+      setSuccess(`Invite sent to ${inviteEmail}.`); setInviteEmail(''); setInviteName('');
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
   }
 
   async function handleResetPassword(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setSubmitting(true);
+    setError(null); setSuccess(null); setSubmitting(true);
     try {
-      await apiFetch('/api/admin/users/reset-password', {
-        method: 'POST',
-        body: { project_id: projectId, email: resetEmail },
-      });
-      setSuccess(`Password reset email sent to ${resetEmail}.`);
-      setResetEmail('');
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      await apiFetch('/api/admin/users/reset-password', { method: 'POST', body: { project_id: projectId, email: resetEmail } });
+      setSuccess(`Password reset email sent to ${resetEmail}.`); setResetEmail('');
+    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
   }
 
   const pendingApproval = advances.filter((a) => a.status === 'pending_approval');
   const pendingFundApproval = fundRequisitions.filter((f) => f.status === 'pending_approval');
+
+  const labelStyle = { display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' };
 
   return (
     <div style={{ maxWidth: 680, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
@@ -206,17 +330,20 @@ export function AdminPage({ projectId }) {
         <p style={{ color: 'var(--color-aggregate)' }}>Loading…</p>
       ) : (
         <>
+          {/* Advances awaiting admin approval */}
           <div className="ledger-header">
             <h3>Advances awaiting your approval</h3>
-            <span className="ledger-header-note">verified by Cashier &middot; approving allows disbursement</span>
+            <span className="ledger-header-note">verified by Cashier · approving allows disbursement</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-            {pendingApproval.map((a) => (
+            {pendingApproval.length === 0 ? (
+              <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>All caught up — nothing awaiting your approval.</p>
+            ) : pendingApproval.map((a) => (
               <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 600 }}>{a.justification}</p>
                   <p className="numeric" style={{ margin: '4px 0 0', color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
-                    {a.amount} &middot; {a.advance_category}
+                    Nu. {a.amount?.toLocaleString()} &middot; {a.advance_category}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -229,38 +356,28 @@ export function AdminPage({ projectId }) {
                   >
                     Approve
                   </button>
-                  <button
-                    disabled={actingId === a.id}
-                    onClick={() => {
-                      const remarks = window.prompt('Reason for rejecting this advance:');
-                      if (remarks) {
-                        runAction(a.id, () =>
-                          apiFetch(`/api/financial/advances/${a.id}/reject`, { method: 'POST', body: { remarks } })
-                        );
-                      }
-                    }}
-                  >
+                  <button disabled={actingId === a.id} onClick={() => handleRejectAdvance(a.id)}>
                     Reject
                   </button>
                 </div>
               </div>
             ))}
-            {pendingApproval.length === 0 && (
-              <p style={{ color: 'var(--color-aggregate)' }}>Nothing awaiting your approval.</p>
-            )}
           </div>
 
+          {/* Fund requisitions */}
           <div className="ledger-header">
             <h3>Fund requisitions awaiting your approval</h3>
-            <span className="ledger-header-note">generates a receipt &middot; emails Accounts if configured</span>
+            <span className="ledger-header-note">generates a receipt · emails Accounts if configured</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            {pendingFundApproval.map((f) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+            {pendingFundApproval.length === 0 ? (
+              <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>All caught up — nothing awaiting approval.</p>
+            ) : pendingFundApproval.map((f) => (
               <div key={f.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 600 }}>{f.reason}</p>
                   <p className="numeric" style={{ margin: '4px 0 0', color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
-                    {f.amount}
+                    Nu. {f.amount?.toLocaleString()}
                   </p>
                 </div>
                 <button
@@ -274,79 +391,43 @@ export function AdminPage({ projectId }) {
                 </button>
               </div>
             ))}
-            {pendingFundApproval.length === 0 && (
-              <p style={{ color: 'var(--color-aggregate)' }}>Nothing awaiting your approval.</p>
-            )}
           </div>
 
-          <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}><h3>BOQ setup</h3></div>
+          {/* BOQ Setup */}
+          <div className="ledger-header"><h3>BOQ setup</h3></div>
 
           <form onSubmit={handleCreateSection} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-3)' }}>Add a section</p>
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <input
-                value={newSectionName}
-                onChange={(e) => setNewSectionName(e.target.value)}
-                placeholder="e.g. Civil Works"
-                required
-                style={{ flex: 1 }}
-              />
+              <input value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} placeholder="e.g. Civil Works" required style={{ flex: 1 }} />
               <button type="submit" className="primary" disabled={submitting}>Add section</button>
             </div>
           </form>
 
           <form onSubmit={handleCreateItem} className="ticket" style={{ marginBottom: 'var(--space-6)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-3)' }}>Add a work item</p>
-
-            <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-              Section
-            </label>
-            <select
-              value={newItemSectionId}
-              onChange={(e) => setNewItemSectionId(e.target.value)}
-              required
-              style={{ marginBottom: 'var(--space-3)' }}
-            >
+            <label style={labelStyle}>Section</label>
+            <select value={newItemSectionId} onChange={(e) => setNewItemSectionId(e.target.value)} required style={{ marginBottom: 'var(--space-3)' }}>
               <option value="">Select a section…</option>
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
+              {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-
-            <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-              Description
-            </label>
-            <input
-              value={newItemDescription}
-              onChange={(e) => setNewItemDescription(e.target.value)}
-              required
-              style={{ marginBottom: 'var(--space-3)' }}
-            />
-
+            <label style={labelStyle}>Description</label>
+            <input value={newItemDescription} onChange={(e) => setNewItemDescription(e.target.value)} required style={{ marginBottom: 'var(--space-3)' }} />
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-                  Unit
-                </label>
+                <label style={labelStyle}>Unit</label>
                 <input value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} placeholder="sqm" required />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-                  Quantity
-                </label>
+                <label style={labelStyle}>Quantity</label>
                 <input type="number" min="0" step="0.01" value={newItemQuantity} onChange={(e) => setNewItemQuantity(e.target.value)} required />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-                  Rate
-                </label>
+                <label style={labelStyle}>Rate</label>
                 <input type="number" min="0" step="0.01" value={newItemRate} onChange={(e) => setNewItemRate(e.target.value)} required />
               </div>
             </div>
-
-            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>
-              Add work item
-            </button>
+            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>Add work item</button>
           </form>
 
           {boqItems.length > 0 && (
@@ -362,55 +443,39 @@ export function AdminPage({ projectId }) {
             </div>
           )}
 
-          <div className="ledger-header"><h3>Users</h3></div>
+          {/* Improvement #1: Permission Checkboxes panel */}
+          <PermissionsPanel projectId={projectId} />
+
+          {/* User Management */}
+          <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}><h3>Users</h3></div>
 
           <form onSubmit={handleAssignRole} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Assign role to an existing user</p>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
               For someone who already has an account.
             </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <input
-                type="email"
-                value={assignEmail}
-                onChange={(e) => setAssignEmail(e.target.value)}
-                placeholder="their@email.com"
-                required
-                style={{ flex: 2 }}
-              />
-              <select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <input type="email" value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: '2 1 160px' }} />
+              <select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} style={{ flex: '1 1 140px' }}>
                 <option value="company_owner">Company Owner</option>
                 <option value="admin">Admin</option>
                 <option value="site_coordinator">Site Coordinator</option>
                 <option value="cashier">Cashier</option>
                 <option value="viewer">Viewer</option>
               </select>
-              <button type="submit" className="primary" disabled={submitting}>Assign</button>
+              <button type="submit" className="primary" disabled={submitting} style={{ flexShrink: 0 }}>Assign</button>
             </div>
           </form>
 
-          <form onSubmit={handleInviteUser} className="ticket">
+          <form onSubmit={handleInviteUser} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Invite a new user</p>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
               For someone who has never logged in before. They'll receive an email to set their password.
             </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-              <input
-                value={inviteName}
-                onChange={(e) => setInviteName(e.target.value)}
-                placeholder="Full name"
-                required
-                style={{ flex: 1 }}
-              />
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="their@email.com"
-                required
-                style={{ flex: 1 }}
-              />
-              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+              <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Full name" required style={{ flex: '1 1 120px' }} />
+              <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: '1 1 160px' }} />
+              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ flex: '1 1 140px' }}>
                 <option value="company_owner">Company Owner</option>
                 <option value="admin">Admin</option>
                 <option value="site_coordinator">Site Coordinator</option>
@@ -418,26 +483,17 @@ export function AdminPage({ projectId }) {
                 <option value="viewer">Viewer</option>
               </select>
             </div>
-            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>
-              Send invite
-            </button>
+            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>Send invite</button>
           </form>
 
-          <form onSubmit={handleResetPassword} className="ticket" style={{ marginTop: 'var(--space-4)' }}>
+          <form onSubmit={handleResetPassword} className="ticket">
             <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Reset password</p>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
-              For someone who already has an account but is locked out. Sends them an email to set a new password &mdash; no password is ever entered or shown here.
+              Sends a recovery email — no password is ever entered or shown here.
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <input
-                type="email"
-                value={resetEmail}
-                onChange={(e) => setResetEmail(e.target.value)}
-                placeholder="their@email.com"
-                required
-                style={{ flex: 1 }}
-              />
-              <button type="submit" className="primary" disabled={submitting}>Send reset email</button>
+              <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: 1 }} />
+              <button type="submit" className="primary" disabled={submitting} style={{ flexShrink: 0 }}>Send reset email</button>
             </div>
           </form>
         </>
