@@ -38,12 +38,12 @@ async function uploadSettlementReceipt(projectId, file) {
     reader.readAsDataURL(file);
   });
 
-  const path = `settlements/${projectId}/${crypto.randomUUID()}.jpg`;
+  const path = `${projectId}/${crypto.randomUUID()}.jpg`;
   const { error } = await supabase.storage
-    .from('site-photos')
+    .from('settlement-receipts')
     .upload(path, compressed, { contentType: 'image/jpeg' });
   if (error) throw new Error(`Receipt upload failed: ${error.message}`);
-  const { data: urlData } = supabase.storage.from('site-photos').getPublicUrl(path);
+  const { data: urlData } = supabase.storage.from('settlement-receipts').getPublicUrl(path);
   return urlData.publicUrl;
 }
 
@@ -257,6 +257,60 @@ export function AdvancesPage({ projectId }) {
               {submitting ? 'Submitting…' : 'Submit for verification'}
             </button>
           </form>
+
+          {/* Improvement: settlement status summary — always visible so the
+              coordinator knows where things stand, including when there is
+              nothing left to settle */}
+          <div className="ledger-header"><h3>Settlement status</h3></div>
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            {(() => {
+              const outstanding = disbursedAdvances.filter((a) => {
+                const settled = computeSettled(settlements, a.id);
+                return a.amount - settled > 0;
+              });
+              const pendingReview = settlements.filter((s) => s.status === 'pending_verification');
+              const recentlyVerified = settlements.filter((s) => s.status === 'verified');
+
+              if (outstanding.length === 0 && pendingReview.length === 0) {
+                return (
+                  <div className="ticket ticket--accent-survey" style={{ textAlign: 'center', padding: 'var(--space-5)' }}>
+                    <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>
+                      ✓ All settled — you have no advances awaiting settlement.
+                    </p>
+                    {recentlyVerified.length > 0 && (
+                      <p style={{ color: 'var(--color-aggregate)', margin: 'var(--space-2) 0 0', fontSize: 'var(--text-sm)' }}>
+                        {recentlyVerified.length} settlement{recentlyVerified.length > 1 ? 's' : ''} verified by the Cashier.
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {outstanding.length > 0 && (
+                    <div className="ticket ticket--sunken" style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <p style={{ margin: 0, fontSize: 'var(--text-sm)' }}>
+                        <strong>{outstanding.length}</strong> advance{outstanding.length > 1 ? 's' : ''} still awaiting settlement
+                        {' — '}
+                        <span className="numeric">
+                          Nu. {outstanding.reduce((sum, a) => sum + (a.amount - computeSettled(settlements, a.id)), 0).toLocaleString()}
+                        </span>
+                        {' outstanding.'}
+                      </p>
+                    </div>
+                  )}
+                  {pendingReview.length > 0 && (
+                    <div className="ticket ticket--sunken" style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                      <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>
+                        <strong>{pendingReview.length}</strong> settlement{pendingReview.length > 1 ? 's' : ''} awaiting Cashier review.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
 
           {/* Settlement form */}
           {disbursedAdvances.length > 0 && (

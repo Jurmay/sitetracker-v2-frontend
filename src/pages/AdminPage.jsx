@@ -6,69 +6,48 @@ import { useAuth } from '../context/AuthContext';
 // Fetches the report permission grid for a chosen user and lets admin
 // toggle each report on/off via PUT /api/dashboard/permissions
 function PermissionsPanel({ projectId }) {
-  const [targetUserId, setTargetUserId] = useState('');
-  const [targetEmail, setTargetEmail] = useState('');
+  const [lookupEmail, setLookupEmail] = useState('');
+  const [targetUser, setTargetUser] = useState(null); // { user_id, name, email, roles }
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(null); // report_key being saved
+  const [saving, setSaving] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  async function loadPermissions(userId) {
-    if (!userId) return;
+  // Improvement: look the user up by EMAIL (not a raw UUID), then load
+  // their permission grid. Uses the /api/admin/users/lookup endpoint.
+  async function handleLookup(e) {
+    e.preventDefault();
+    if (!lookupEmail.trim()) return;
     setLoading(true);
     setError(null);
+    setSuccess(null);
+    setPermissions([]);
+    setTargetUser(null);
+
     try {
-      const data = await apiFetch(`/api/dashboard/permissions/${userId}`, {
+      const found = await apiFetch('/api/admin/users/lookup', {
+        method: 'POST',
+        body: { project_id: projectId, email: lookupEmail.trim() },
+      });
+      setTargetUser(found);
+
+      const perms = await apiFetch(`/api/dashboard/permissions/${found.user_id}`, {
         params: { project_id: projectId },
       });
-      setPermissions(data);
+      setPermissions(perms);
+      if (perms.length === 0) {
+        setError('This user has no permission rows yet on this project.');
+      }
     } catch (err) {
       setError(err.message);
-      setPermissions([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleLookup(e) {
-    e.preventDefault();
-    // The permissions endpoint takes a user_id, but admin knows emails.
-    // We use the admin users endpoint to get the user id by email first.
-    // Simpler UX: just enter the target user's email and we resolve it.
-    setError(null);
-    setPermissions([]);
-    setTargetUserId('');
-    setLoading(true);
-    try {
-      // Use assign-role as a way to get the profile - it will 404 if not found
-      // Instead we call my-role to get own id, then use a direct approach:
-      // Fetch own permissions to confirm project access, then get target user's
-      // permissions by calling the endpoint. We need the user_id though.
-      // Workaround: call the permissions endpoint for the email as typed.
-      // Actually, the backend expects a user_id UUID. We need to look it up.
-      // The cleanest path: POST to assign-role with the same role they already
-      // have (idempotent upsert) just to get the profile resolved. But that's
-      // wrong. Best we can do in the frontend without a dedicated "lookup by email"
-      // endpoint: ask the admin to paste the user's UID, or provide the email
-      // and we'll try to derive it from the project roles listing.
-      // For now, accept email and try the permissions endpoint with it as a hint;
-      // the endpoint will return 403 if not found which we surface clearly.
-      // TODO: add a /api/admin/users/lookup?email= endpoint to the backend for cleaner UX.
-      throw new Error('To view a user\'s permissions, paste their User ID (from Supabase Authentication → Users). Email lookup requires a backend endpoint not yet built.');
-    } catch (err) {
-      setError(err.message);
-      setLoading(false);
-    }
-  }
-
-  async function handleLookupById(e) {
-    e.preventDefault();
-    if (!targetUserId.trim()) return;
-    await loadPermissions(targetUserId.trim());
-  }
-
   async function togglePermission(reportKey, currentlyGranted) {
+    if (!targetUser) return;
     setSaving(reportKey);
     setError(null);
     try {
@@ -76,17 +55,15 @@ function PermissionsPanel({ projectId }) {
         method: 'PUT',
         params: { project_id: projectId },
         body: {
-          user_id: targetUserId,
+          user_id: targetUser.user_id,
           report_definition_key: reportKey,
           granted: !currentlyGranted,
         },
       });
-      setSuccess(`${reportKey} ${!currentlyGranted ? 'granted' : 'revoked'}.`);
       setPermissions((prev) =>
-        prev.map((p) =>
-          p.report_key === reportKey ? { ...p, granted: !currentlyGranted } : p
-        )
+        prev.map((p) => (p.report_key === reportKey ? { ...p, granted: !currentlyGranted } : p))
       );
+      setSuccess(`${!currentlyGranted ? 'Granted' : 'Revoked'}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -94,7 +71,6 @@ function PermissionsPanel({ projectId }) {
     }
   }
 
-  // Group by category
   const byCategory = permissions.reduce((acc, p) => {
     const cat = p.category ?? 'Other';
     if (!acc[cat]) acc[cat] = [];
@@ -102,10 +78,15 @@ function PermissionsPanel({ projectId }) {
     return acc;
   }, {});
 
+  const ROLE_LABELS = {
+    company_owner: 'Company Owner', admin: 'Admin',
+    site_coordinator: 'Site Coordinator', cashier: 'Cashier', viewer: 'Viewer',
+  };
+
   return (
     <div>
       <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}>
-        <h3>Report & Dashboard Permissions</h3>
+        <h3>Report &amp; Dashboard Permissions</h3>
         <span className="ledger-header-note">control what each user can access</span>
       </div>
 
@@ -120,42 +101,54 @@ function PermissionsPanel({ projectId }) {
         </div>
       )}
 
-      <form onSubmit={handleLookupById} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
-        <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>View/edit a user's permissions</p>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', margin: '0 0 var(--space-3)' }}>
-          Paste the user's ID from Supabase (Authentication → Users → UID column).
+      <form onSubmit={handleLookup} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
+        <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>
+          View / edit a user&rsquo;s permissions
         </p>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', margin: '0 0 var(--space-3)' }}>
+          Enter the user&rsquo;s email address.
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
           <input
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            placeholder="e.g. a08cc3d9-94c0-4fdd-..."
+            type="email"
+            value={lookupEmail}
+            onChange={(e) => setLookupEmail(e.target.value)}
+            placeholder="their@email.com"
             required
-            style={{ flex: 1 }}
+            style={{ flex: '1 1 180px' }}
           />
-          <button type="submit" className="primary" disabled={loading}>
+          <button type="submit" className="primary" disabled={loading} style={{ flexShrink: 0 }}>
             {loading ? 'Loading…' : 'Load'}
           </button>
         </div>
       </form>
 
+      {targetUser && (
+        <div className="ticket ticket--sunken" style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>{targetUser.name}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>
+            {targetUser.email} &middot; {targetUser.roles.map((r) => ROLE_LABELS[r] ?? r).join(', ')}
+          </p>
+        </div>
+      )}
+
       {permissions.length > 0 && (
         <div className="ticket" style={{ marginBottom: 'var(--space-6)' }}>
           {Object.entries(byCategory).map(([category, perms]) => (
             <div key={category} style={{ marginBottom: 'var(--space-4)' }}>
-              <p style={{ fontWeight: 700, fontSize: 'var(--text-sm)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-aggregate)', margin: '0 0 var(--space-2)' }}>
+              <p style={{
+                fontWeight: 700, fontSize: 'var(--text-xs)', textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: 'var(--color-aggregate)', margin: '0 0 var(--space-2)',
+              }}>
                 {category}
               </p>
               {perms.map((p) => (
                 <label
                   key={p.report_key}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-3)',
-                    padding: 'var(--space-2) 0',
-                    borderBottom: '1px solid var(--color-aggregate-faint)',
-                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                    padding: 'var(--space-3) 0', minHeight: 44,
+                    borderBottom: '1px solid var(--color-aggregate-faint)', cursor: 'pointer',
                   }}
                 >
                   <input
@@ -163,15 +156,12 @@ function PermissionsPanel({ projectId }) {
                     checked={p.granted}
                     disabled={saving === p.report_key}
                     onChange={() => togglePermission(p.report_key, p.granted)}
-                    style={{ width: 18, height: 18, accentColor: 'var(--color-primary)', flexShrink: 0 }}
+                    style={{ width: 20, height: 20, accentColor: 'var(--color-primary)', flexShrink: 0, margin: 0 }}
                   />
                   <span style={{ fontSize: 'var(--text-sm)', flex: 1 }}>{p.report_name}</span>
-                  {saving === p.report_key && (
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>saving…</span>
-                  )}
-                  {p.granted && saving !== p.report_key && (
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-survey-deep)', fontWeight: 600 }}>✓ Granted</span>
-                  )}
+                  {saving === p.report_key
+                    ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>saving…</span>
+                    : p.granted && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-survey-deep)', fontWeight: 600 }}>✓</span>}
                 </label>
               ))}
             </div>
