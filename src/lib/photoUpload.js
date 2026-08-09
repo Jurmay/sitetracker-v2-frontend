@@ -71,3 +71,27 @@ export async function uploadLabourerPhoto(projectId, file) {
   // photos back, only register/submit them.
   return path;
 }
+
+/**
+ * Resolves a stored labourer photo PATH (as saved in labourers.photo_url)
+ * into a temporary signed URL the browser can actually load as an <img>.
+ *
+ * The bucket is private, so plain paths are not directly viewable - every
+ * display needs its own signed URL, generated fresh, since these expire.
+ * expiresInSeconds defaults to 1 hour, which comfortably covers a single
+ * screen view; if a photo needs to stay visible longer (e.g. left open
+ * in a background tab), the caller should re-fetch rather than cache
+ * this indefinitely.
+ *
+ * Returns null (rather than throwing) if the path is empty or the signed
+ * URL request fails, so a broken/missing photo degrades to "no photo
+ * shown" instead of crashing the screen that requested it.
+ */
+export async function getLabourerPhotoUrl(path, expiresInSeconds = 3600) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage
+    .from('labourer-photos')
+    .createSignedUrl(path, expiresInSeconds);
+  if (error || !data) return null;
+  return data.signedUrl;
+}

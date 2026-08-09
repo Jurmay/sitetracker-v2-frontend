@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
-import { uploadLabourerPhoto } from '../lib/photoUpload';
+import { uploadLabourerPhoto, getLabourerPhotoUrl } from '../lib/photoUpload';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -10,6 +10,10 @@ export function MasterRollPage({ projectId }) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  // Improvement: signed thumbnail URLs for each worker's registered photo,
+  // keyed by labourer id. Fetched lazily whenever search results change,
+  // since the bucket is private and every view needs a freshly-signed URL.
+  const [photoUrls, setPhotoUrls] = useState({});
   const [selectedLabourers, setSelectedLabourers] = useState([]); // [{id, name, present}]
 
   const [showRegisterForm, setShowRegisterForm] = useState(false);
@@ -30,10 +34,26 @@ export function MasterRollPage({ projectId }) {
         params: { project_id: projectId, q },
       });
       setSearchResults(results);
+
+      // Resolve signed thumbnail URLs for any worker we haven't already
+      // fetched one for in this session. Skipped for workers with no
+      // photo_url (shouldn't happen given registration requires a photo,
+      // but handled gracefully either way).
+      const toResolve = results.filter((l) => l.photo_url && !photoUrls[l.id]);
+      if (toResolve.length > 0) {
+        const resolved = await Promise.all(
+          toResolve.map(async (l) => [l.id, await getLabourerPhotoUrl(l.photo_url)])
+        );
+        setPhotoUrls((prev) => {
+          const next = { ...prev };
+          for (const [id, url] of resolved) next[id] = url;
+          return next;
+        });
+      }
     } catch (err) {
       setError(err.message);
     }
-  }, [projectId]);
+  }, [projectId, photoUrls]);
 
   useEffect(() => {
     runSearch('');
@@ -203,6 +223,7 @@ export function MasterRollPage({ projectId }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
               {searchResults.map((labourer) => {
                 const isSelected = selectedLabourers.some((l) => l.id === labourer.id);
+                const thumbUrl = photoUrls[labourer.id];
                 return (
                   <label
                     key={labourer.id}
@@ -217,9 +238,33 @@ export function MasterRollPage({ projectId }) {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelected(labourer)}
-                      style={{ width: 18, height: 18 }}
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
                     />
-                    <span>{labourer.name}</span>
+                    {/* Improvement: worker photo thumbnail, so a coordinator can
+                        visually confirm this is the right person before marking
+                        them present - the whole reason the photo was captured
+                        at registration in the first place. */}
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={`${labourer.name}'s photo`}
+                        style={{
+                          width: 36, height: 36, borderRadius: '50%',
+                          objectFit: 'cover', flexShrink: 0,
+                          border: '1px solid var(--color-aggregate-light)',
+                        }}
+                      />
+                    ) : (
+                      <span style={{
+                        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                        background: 'var(--color-aggregate-faint)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)',
+                      }}>
+                        {labourer.name?.[0]?.toUpperCase() ?? '?'}
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }}>{labourer.name}</span>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }} className="numeric">
                       {labourer.id_number}
                     </span>
