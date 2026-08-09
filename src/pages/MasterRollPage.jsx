@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { uploadLabourerPhoto, getLabourerPhotoUrl } from '../lib/photoUpload';
+import { useAuth } from '../context/AuthContext';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
 export function MasterRollPage({ projectId }) {
+  const { user } = useAuth();
+  // Fix #2: whether today's master roll already exists for this
+  // coordinator. Null = still checking; an object = already submitted;
+  // false = not yet submitted, safe to show the form.
+  const [todaysEntry, setTodaysEntry] = useState(null);
   const [isNoWorkDay, setIsNoWorkDay] = useState(false);
   const [noWorkRemarks, setNoWorkRemarks] = useState('');
 
@@ -58,6 +64,31 @@ export function MasterRollPage({ projectId }) {
   useEffect(() => {
     runSearch('');
   }, [runSearch]);
+
+  // Fix #2: on load, check whether this coordinator has already submitted
+  // today's master roll. If so, we show a "done for today" panel instead
+  // of the submit form, so they can't hit the duplicate-key error at all.
+  useEffect(() => {
+    if (!projectId || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const entries = await apiFetch('/api/master-roll/entries', {
+          params: { project_id: projectId },
+        });
+        const mine = (entries || []).find(
+          (e) => e.date === TODAY && e.coordinator_id === user.id
+        );
+        if (!cancelled) setTodaysEntry(mine || false);
+      } catch {
+        // If the check fails, fall back to showing the form (false) rather
+        // than blocking the coordinator - the DB constraint still protects
+        // against an actual duplicate.
+        if (!cancelled) setTodaysEntry(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, user?.id]);
 
   function toggleSelected(labourer) {
     setSelectedLabourers((prev) => {
@@ -139,7 +170,7 @@ export function MasterRollPage({ projectId }) {
 
     setSubmitting(true);
     try {
-      await apiFetch('/api/master-roll/entries', {
+      const created = await apiFetch('/api/master-roll/entries', {
         method: 'POST',
         body: {
           project_id: projectId,
@@ -153,8 +184,24 @@ export function MasterRollPage({ projectId }) {
       });
       setSuccess(true);
       setSelectedLabourers([]);
+      // Fix #2: record that today's entry now exists so the form is
+      // replaced by the "done for today" panel without a page reload.
+      setTodaysEntry(
+        created && created.id
+          ? created
+          : { date: TODAY, is_no_work_day: isNoWorkDay, no_work_remarks: noWorkRemarks }
+      );
     } catch (err) {
-      setError(err.message);
+      // Fix #1: turn the raw database duplicate-key error into a plain,
+      // reassuring message. This is a safety net in case two devices (or
+      // two taps) race past the form-hiding check above.
+      const raw = String(err.message || '');
+      if (raw.includes('duplicate key') || raw.includes('uq_master_roll_entry') || raw.includes('already exists')) {
+        setError("Today's Master Roll has already been submitted. Nothing more to do here today.");
+        setTodaysEntry((prev) => prev || { date: TODAY, is_no_work_day: isNoWorkDay });
+      } else {
+        setError(err.message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -181,6 +228,27 @@ export function MasterRollPage({ projectId }) {
         </div>
       )}
 
+      {/* Fix #2: today's roll already exists - show a done panel instead of
+          the attendance form + submit button, so the coordinator can't hit
+          the duplicate-key error. Worker registration below stays available. */}
+      {todaysEntry ? (
+        <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
+          <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>
+            ✓ Today's Master Roll is done.
+          </p>
+          <p style={{ color: 'var(--color-aggregate)', margin: 'var(--space-2) 0 0', fontSize: 'var(--text-sm)' }}>
+            {todaysEntry.is_no_work_day
+              ? 'Recorded as a no-work day.'
+              : 'Attendance has been recorded for today.'}
+            {' '}You can submit again tomorrow.
+          </p>
+        </div>
+      ) : todaysEntry === null ? (
+        <p style={{ color: 'var(--color-aggregate)', marginBottom: 'var(--space-5)' }}>
+          Checking today's status…
+        </p>
+      ) : (
+      <>
       <div className="ticket" style={{ marginBottom: 'var(--space-5)' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer' }}>
           <input
@@ -362,6 +430,8 @@ export function MasterRollPage({ projectId }) {
       >
         {submitting ? 'Submitting…' : 'Submit master roll'}
       </button>
+      </>
+      )}
     </div>
   );
 }

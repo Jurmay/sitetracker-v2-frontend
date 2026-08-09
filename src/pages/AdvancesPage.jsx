@@ -175,7 +175,23 @@ export function AdvancesPage({ projectId }) {
     }
   }
 
-  const disbursedAdvances = advances.filter((a) => a.status === 'disbursed');
+  // Only advances that still have money left to account for. A fully
+  // settled advance keeps status 'disbursed' in the database, so status
+  // alone is not enough - we must subtract what has already been settled.
+  // (Bug: the dropdown previously listed every disbursed advance, which
+  // contradicted the "All settled" summary shown directly above it.)
+  // Only advances with a real remaining balance belong in the settle
+  // dropdown. We compare against a 1-ngultrum tolerance rather than a
+  // strict > 0: settlement amounts are entered by hand and summed as
+  // floats, so a fully-settled advance can land a hair above zero
+  // (e.g. 5000 - 4999.9999) and wrongly reappear in the list. Anything
+  // within Nu. 1 of fully settled is treated as done.
+  const SETTLE_TOLERANCE = 1;
+  const disbursedAdvances = advances.filter((a) => {
+    if (a.status !== 'disbursed') return false;
+    const settled = computeSettled(settlements, a.id);
+    return a.amount - settled > SETTLE_TOLERANCE;
+  });
 
   // Improvement #4: live remaining balance for the selected advance
   const selectedAdvance = useMemo(
@@ -264,10 +280,7 @@ export function AdvancesPage({ projectId }) {
           <div className="ledger-header"><h3>Settlement status</h3></div>
           <div style={{ marginBottom: 'var(--space-5)' }}>
             {(() => {
-              const outstanding = disbursedAdvances.filter((a) => {
-                const settled = computeSettled(settlements, a.id);
-                return a.amount - settled > 0;
-              });
+              const outstanding = disbursedAdvances; // already filtered to those with a remaining balance
               const pendingReview = settlements.filter((s) => s.status === 'pending_verification');
               const recentlyVerified = settlements.filter((s) => s.status === 'verified');
 
