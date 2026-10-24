@@ -3,6 +3,7 @@ import { apiFetch } from '../lib/apiClient';
 import { StatusStamp } from '../components/StatusStamp';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { openReceipt } from '../lib/receipts';
 
 // Improvement #4: helper to compute how much of an advance is already settled
 // by totalling verified/settled settlements against it
@@ -43,8 +44,8 @@ async function uploadSettlementReceipt(projectId, file) {
     .from('settlement-receipts')
     .upload(path, compressed, { contentType: 'image/jpeg' });
   if (error) throw new Error(`Receipt upload failed: ${error.message}`);
-  const { data: urlData } = supabase.storage.from('settlement-receipts').getPublicUrl(path);
-  return urlData.publicUrl;
+  // Private bucket: store the path; openReceipt() signs it when viewed.
+  return path;
 }
 
 export function AdvancesPage({ projectId }) {
@@ -449,7 +450,7 @@ export function AdvancesPage({ projectId }) {
                         </p>
                       )}
                       {s.receipt_url && (
-                        <a href={s.receipt_url} target="_blank" rel="noreferrer"
+                        <a href="#" onClick={(e) => { e.preventDefault(); openReceipt(s.receipt_url); }}
                           style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', textDecoration: 'none', display: 'block', marginTop: 4 }}>
                           View receipt ↗
                         </a>

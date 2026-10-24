@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { StatusStamp } from '../components/StatusStamp';
 import { useAuth } from '../context/AuthContext';
+import { openReceipt } from '../lib/receipts';
 
 // Improvement #5: inline review panel replaces window.prompt for reject reason
 // and adds an optional verification note field
@@ -310,7 +311,7 @@ export function CashierPage({ projectId }) {
                     <p className="numeric" style={{ margin: 0, fontWeight: 600 }}>Nu. {s.settled_amount?.toLocaleString()}</p>
                     {/* Improvement #5: show receipt image if uploaded */}
                     {s.receipt_url && (
-                      <a href={s.receipt_url} target="_blank" rel="noreferrer"
+                      <a href="#" onClick={(e) => { e.preventDefault(); openReceipt(s.receipt_url); }}
                         style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', textDecoration: 'none', display: 'block', marginTop: 4 }}>
                         View receipt ↗
                       </a>
