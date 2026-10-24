@@ -1,17 +1,29 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { PortfolioPage } from './PortfolioPage';
 
 export function ProjectPickerPage({ onSelectProject }) {
   const [projects, setProjects] = useState([]);
+  const [portfolio, setPortfolio] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    apiFetch('/api/projects')
-      .then(setProjects)
+    Promise.all([
+      apiFetch('/api/projects'),
+      // Owners/Admins only; anyone else gets []. Never block the picker on it.
+      apiFetch('/api/dashboard/portfolio').catch(() => []),
+    ])
+      .then(([projectList, sites]) => {
+        setProjects(projectList);
+        setPortfolio(sites);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const portfolioIds = new Set(portfolio.map((s) => s.project_id));
+  const otherProjects = projects.filter((p) => !portfolioIds.has(p.id));
 
   if (loading) {
     return (
@@ -22,11 +34,23 @@ export function ProjectPickerPage({ onSelectProject }) {
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
-      <h1 style={{ marginBottom: 'var(--space-2)' }}>Select a project</h1>
-      <p style={{ color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-6)' }}>
-        Choose which project to work in.
-      </p>
+    <div style={{ maxWidth: portfolio.length ? 960 : 600, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
+      {portfolio.length > 0 && <PortfolioPage sites={portfolio} onOpenSite={onSelectProject} />}
+
+      {portfolio.length > 0 ? (
+        otherProjects.length > 0 && (
+          <div className="ledger-header">
+            <h3>Other projects</h3>
+          </div>
+        )
+      ) : (
+        <>
+          <h1 style={{ marginBottom: 'var(--space-2)' }}>Select a project</h1>
+          <p style={{ color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-6)' }}>
+            Choose which project to work in.
+          </p>
+        </>
+      )}
 
       {error && (
         <div className="ticket" style={{ borderColor: 'var(--color-brick)', marginBottom: 'var(--space-5)' }}>
@@ -44,7 +68,7 @@ export function ProjectPickerPage({ onSelectProject }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        {projects.map((p) => (
+        {otherProjects.map((p) => (
           <button
             key={p.id}
             onClick={() => onSelectProject(p.id)}
