@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { bhutanToday } from '../lib/today';
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = bhutanToday();
 
 export function ProgressPage({ projectId }) {
   const [boqItems, setBoqItems] = useState([]);
