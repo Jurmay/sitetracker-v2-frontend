@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { uploadLabourerPhoto, getLabourerPhotoUrl } from '../lib/photoUpload';
 import { useAuth } from '../context/AuthContext';
+import { bhutanToday } from '../lib/today';
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = bhutanToday();
 
 export function MasterRollPage({ projectId }) {
   const { user } = useAuth();

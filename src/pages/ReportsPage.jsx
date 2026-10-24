@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { bhutanToday } from '../lib/today';
 
 const NEEDS_DATE_RANGE = new Set([
   'daily_progress_report', 'weekly_progress_report', 'monthly_progress_report',
@@ -13,15 +14,12 @@ const IMPLEMENTED_KEYS = new Set([
   'labour_productivity_report', 'ledger_report', 'project_financial_report',
 ]);
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function ReportsPage({ projectId }) {
   const [permissions, setPermissions] = useState([]);
   const [selectedKey, setSelectedKey] = useState('');
-  const [dateFrom, setDateFrom] = useState(todayIso());
-  const [dateTo, setDateTo] = useState(todayIso());
+  const [dateFrom, setDateFrom] = useState(bhutanToday());
+  const [dateTo, setDateTo] = useState(bhutanToday());
   const [reportData, setReportData] = useState(null);
 
   const [loadingPerms, setLoadingPerms] = useState(true);
