@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MasterRollPage } from './pages/MasterRollPage';
 import { ProgressPage } from './pages/ProgressPage';
+import { SchedulePage } from './pages/SchedulePage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
@@ -25,6 +26,7 @@ const TAB_TITLES = {
   dashboard: 'Dashboard',
   'master-roll': 'Master Roll',
   progress: 'Progress',
+  schedule: 'Schedule',
   reports: 'Reports',
   advances: 'Advances',
   cashier: 'Cashier',
@@ -35,6 +37,7 @@ const BASE_TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'master-roll', label: 'Master Roll' },
   { key: 'progress', label: 'Progress' },
+  { key: 'schedule', label: 'Schedule' },
   { key: 'reports', label: 'Reports' },
 ];
 
@@ -251,6 +254,7 @@ function AppShell() {
         {activeTab === 'dashboard' && <DashboardPage projectId={projectId} />}
         {activeTab === 'master-roll' && <MasterRollPage projectId={projectId} />}
         {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
+        {activeTab === 'schedule' && <SchedulePage projectId={projectId} canEdit={hasRole('admin') || hasRole('company_owner')} />}
         {activeTab === 'reports' && <ReportsPage projectId={projectId} />}
         {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
         {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
