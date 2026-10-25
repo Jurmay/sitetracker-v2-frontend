@@ -40,6 +40,12 @@ function siteAlerts(s) {
   if (s.schedule_variance < 0) {
     alerts.push({ level: 'safety', text: `Behind schedule by Nu. ${formatCurrency(-s.schedule_variance)} of work` });
   }
+  if (s.schedule_items_late > 0) {
+    alerts.push({ level: 'safety', text: `${s.schedule_items_late} BOQ item${s.schedule_items_late > 1 ? 's' : ''} behind schedule` });
+  }
+  if (s.schedule_items_unscheduled > 0) {
+    alerts.push({ level: 'safety', text: `${s.schedule_items_unscheduled} BOQ item${s.schedule_items_unscheduled > 1 ? 's' : ''} without planned dates` });
+  }
   if (s.items_exceeding_boq_estimate > 0) {
     alerts.push({ level: 'safety', text: `${s.items_exceeding_boq_estimate} BOQ item${s.items_exceeding_boq_estimate > 1 ? 's' : ''} past estimated quantity` });
   }
