@@ -13,6 +13,7 @@ import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ProjectPickerPage } from './pages/ProjectPickerPage';
+import { OutboxBanner } from './components/OutboxBanner';
 
 // Improvement #2 & #3: human-readable role labels + page titles
 const ROLE_LABELS = {
@@ -203,14 +204,32 @@ function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, role
   );
 }
 
+const LAST_PROJECT_KEY = 'sitetracker-last-project';
+
+function readLastProject() {
+  try { return localStorage.getItem(LAST_PROJECT_KEY); } catch { return null; }
+}
+
+function saveLastProject(id) {
+  try {
+    if (id) localStorage.setItem(LAST_PROJECT_KEY, id);
+    else localStorage.removeItem(LAST_PROJECT_KEY);
+  } catch {
+    // storage blocked (private mode) - the project picker still works
+  }
+}
+
 function AppShell() {
   const { user, loading, signOut } = useAuth();
-  const [projectId, setProjectId] = useState(() => new URLSearchParams(window.location.search).get('project_id'));
+  // The installed app always opens at "/", so the last project is
+  // remembered on the phone and reopened without needing a signal.
+  const [projectId, setProjectId] = useState(() => new URLSearchParams(window.location.search).get('project_id') || readLastProject());
   const [activeTab, setActiveTab] = useState('dashboard');
   const { roles, hasRole } = useMyRoles(projectId);
 
   function selectProject(id) {
     setProjectId(id);
+    saveLastProject(id);
     const url = new URL(window.location.href);
     url.searchParams.set('project_id', id);
     window.history.replaceState({}, '', url);
@@ -219,6 +238,7 @@ function AppShell() {
 
   function switchProject() {
     setProjectId(null);
+    saveLastProject(null);
     const url = new URL(window.location.href);
     url.searchParams.delete('project_id');
     window.history.replaceState({}, '', url);
@@ -233,7 +253,7 @@ function AppShell() {
   }
 
   if (!user) return <LoginPage />;
-  if (!projectId) return <ProjectPickerPage onSelectProject={selectProject} />;
+  if (!projectId) return <><OutboxBanner /><ProjectPickerPage onSelectProject={selectProject} /></>;
 
   const tabs = [
     ...BASE_TABS,
@@ -246,11 +266,12 @@ function AppShell() {
 
   return (
     <div>
+      <OutboxBanner />
       <NavBar
         tabs={tabs}
         activeTab={activeTab}
         onChangeTab={setActiveTab}
-        onSignOut={signOut}
+        onSignOut={() => { switchProject(); signOut(); }}
         onSwitchProject={switchProject}
         roles={roles}
       />

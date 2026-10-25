@@ -16,7 +16,7 @@ import { supabase } from './supabaseClient';
  * project-configurable-limit system, since labourer photos are a fixed,
  * small use case (ID-style photo, not a high-res progress shot).
  */
-async function compressImage(file, maxDimension = 800, quality = 0.8) {
+export async function compressImage(file, maxDimension = 800, quality = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();

@@ -27,14 +27,21 @@ export async function apiFetch(path, { method = 'GET', body, params, raw = false
   // FormData (file uploads) goes as-is so the browser sets the multipart
   // boundary itself; everything else is sent as JSON.
   const isForm = body instanceof FormData;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: isForm ? body : body ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: isForm ? body : body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    // fetch only throws when the request never got a reply (no signal,
+    // server unreachable); the outbox uses this flag to queue and retry.
+    throw Object.assign(new Error('No connection to the server.'), { offline: true, cause: err });
+  }
 
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;

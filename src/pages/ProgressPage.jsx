@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { bhutanToday } from '../lib/today';
+import { sendOrQueue } from '../lib/outbox';
 
 const TODAY = bhutanToday();
 
@@ -52,17 +53,23 @@ export function ProgressPage({ projectId }) {
 
     setSubmitting(true);
     try {
-      await apiFetch('/api/progress', {
-        method: 'POST',
+      const outcome = await sendOrQueue({
+        kind: 'progress',
+        label: `Progress ${TODAY}: ${selectedItem.description}, ${quantityNum} ${selectedItem.unit}`,
+        projectId,
+        path: '/api/progress',
         body: {
           project_id: projectId,
           boq_item_id: selectedItemId,
           date: TODAY,
           measured_quantity: quantityNum,
           notes: notes || null,
+          client_ref: crypto.randomUUID(),
         },
       });
-      setSuccess(`Progress recorded: ${selectedItem.description} now at ${quantityNum} ${selectedItem.unit}.`);
+      setSuccess(outcome.queued
+        ? `No signal: saved on this phone. It will be sent automatically when signal returns (${selectedItem.description}, ${quantityNum} ${selectedItem.unit}).`
+        : `Progress recorded: ${selectedItem.description} now at ${quantityNum} ${selectedItem.unit}.`);
       setMeasuredQuantity('');
       setNotes('');
     } catch (err) {
