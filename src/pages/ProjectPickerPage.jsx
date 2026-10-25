@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { PortfolioPage } from './PortfolioPage';
+import { ImportTenderPage } from './ImportTenderPage';
 
 export function ProjectPickerPage({ onSelectProject }) {
   const [projects, setProjects] = useState([]);
   const [portfolio, setPortfolio] = useState([]);
+  const [canCreate, setCanCreate] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -13,10 +16,13 @@ export function ProjectPickerPage({ onSelectProject }) {
       apiFetch('/api/projects'),
       // Owners/Admins only; anyone else gets []. Never block the picker on it.
       apiFetch('/api/dashboard/portfolio').catch(() => []),
+      // Company Owners only; anyone else (or an older backend) gets no button.
+      apiFetch('/api/projects/can-create').then((r) => r.allowed).catch(() => false),
     ])
-      .then(([projectList, sites]) => {
+      .then(([projectList, sites, allowed]) => {
         setProjects(projectList);
         setPortfolio(sites);
+        setCanCreate(allowed);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -33,8 +39,21 @@ export function ProjectPickerPage({ onSelectProject }) {
     );
   }
 
+  if (importing) {
+    return (
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
+        <ImportTenderPage onCreated={onSelectProject} onCancel={() => setImporting(false)} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: portfolio.length ? 960 : 600, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
+      {canCreate && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+          <button className="primary" onClick={() => setImporting(true)}>+ New project from won tender</button>
+        </div>
+      )}
       {portfolio.length > 0 && <PortfolioPage sites={portfolio} onOpenSite={onSelectProject} />}
 
       {portfolio.length > 0 ? (
