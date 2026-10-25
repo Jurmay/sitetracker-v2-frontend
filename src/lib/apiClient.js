@@ -24,13 +24,16 @@ export async function apiFetch(path, { method = 'GET', body, params, raw = false
     url += `?${query.toString()}`;
   }
 
+  // FormData (file uploads) goes as-is so the browser sets the multipart
+  // boundary itself; everything else is sent as JSON.
+  const isForm = body instanceof FormData;
   const response = await fetch(url, {
     method,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
+    body: isForm ? body : body ? JSON.stringify(body) : undefined,
   });
 
   if (!response.ok) {
