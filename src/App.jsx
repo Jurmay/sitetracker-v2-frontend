@@ -8,6 +8,7 @@ import { MasterRollPage } from './pages/MasterRollPage';
 import { ProgressPage } from './pages/ProgressPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { PurchasingPage } from './pages/PurchasingPage';
+import { BillsPage } from './pages/BillsPage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
@@ -30,6 +31,7 @@ const TAB_TITLES = {
   progress: 'Progress',
   schedule: 'Schedule',
   purchasing: 'Purchasing',
+  bills: 'Client bills',
   reports: 'Reports',
   advances: 'Advances',
   cashier: 'Cashier',
@@ -259,6 +261,8 @@ function AppShell() {
     ...BASE_TABS,
     ...(hasRole('site_coordinator') || hasRole('cashier') || hasRole('admin') || hasRole('company_owner')
       ? [{ key: 'purchasing', label: 'Purchasing' }] : []),
+    ...(hasRole('cashier') || hasRole('admin') || hasRole('company_owner')
+      ? [{ key: 'bills', label: 'Bills' }] : []),
     ...(hasRole('site_coordinator') ? [{ key: 'advances', label: 'Advances' }] : []),
     ...(hasRole('cashier') ? [{ key: 'cashier', label: 'Cashier' }] : []),
     ...(hasRole('admin') || hasRole('company_owner') ? [{ key: 'admin', label: 'Admin' }] : []),
@@ -286,6 +290,13 @@ function AppShell() {
             projectId={projectId}
             canManage={hasRole('admin') || hasRole('company_owner')}
             canReceive={hasRole('admin') || hasRole('company_owner') || hasRole('site_coordinator')}
+          />
+        )}
+        {activeTab === 'bills' && (hasRole('cashier') || hasRole('admin') || hasRole('company_owner')) && (
+          <BillsPage
+            projectId={projectId}
+            canManage={hasRole('admin') || hasRole('company_owner')}
+            canPay={hasRole('admin') || hasRole('company_owner') || hasRole('cashier')}
           />
         )}
         {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}

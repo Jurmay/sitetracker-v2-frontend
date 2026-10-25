@@ -40,6 +40,10 @@ function siteAlerts(s) {
   if (s.schedule_variance < 0) {
     alerts.push({ level: 'safety', text: `Behind schedule by Nu. ${formatCurrency(-s.schedule_variance)} of work` });
   }
+  if (s.client_bills_awaiting_certification > 0) {
+    const n = s.client_bills_awaiting_certification;
+    alerts.push({ level: 'safety', text: `${n} client bill${n > 1 ? 's' : ''} waiting for the client's certificate` });
+  }
   if (s.po_deliveries_overdue > 0) {
     alerts.push({ level: 'safety', text: `${s.po_deliveries_overdue} purchase order${s.po_deliveries_overdue > 1 ? 's' : ''} past delivery date` });
   }
@@ -114,6 +118,7 @@ function SiteCard({ site, onOpen }) {
         <Stat label="Cash in hand" value={formatCurrency(site.cash_balance)} variant={site.cash_low ? 'negative' : undefined} />
         <Stat label="Cost variance" value={formatCurrency(site.cost_variance)} variant={site.cost_variance >= 0 ? 'positive' : 'negative'} />
         <Stat label="Advances out" value={formatCurrency(site.advances_outstanding_amount)} />
+        <Stat label="Due from client" value={formatCurrency(site.client_receivable)} />
         <Stat
           label="Submitted today"
           value={site.coordinators_on_duty ? `${Math.min(site.master_roll_submitted_today, site.progress_submitted_today)}/${site.coordinators_on_duty}` : '—'}
@@ -169,6 +174,9 @@ export function PortfolioPage({ sites, onOpenSite }) {
         <Stat label="Cash in hand" value={formatCurrency(sum(sites, 'cash_balance'))} />
         <Stat label="Advances out" value={formatCurrency(sum(sites, 'advances_outstanding_amount'))} />
         <Stat label="On order (POs)" value={formatCurrency(sum(sites, 'po_open_value'))} />
+        <Stat label="Billed to clients" value={formatCurrency(sum(sites, 'client_billed'))} />
+        <Stat label="Due from clients" value={formatCurrency(sum(sites, 'client_receivable'))} />
+        <Stat label="Retention held" value={formatCurrency(sum(sites, 'client_retention_held'))} />
       </div>
 
       <div className="ledger-header">
