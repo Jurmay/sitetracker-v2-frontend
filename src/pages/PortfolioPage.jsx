@@ -40,6 +40,9 @@ function siteAlerts(s) {
   if (s.schedule_variance < 0) {
     alerts.push({ level: 'safety', text: `Behind schedule by Nu. ${formatCurrency(-s.schedule_variance)} of work` });
   }
+  if (s.po_deliveries_overdue > 0) {
+    alerts.push({ level: 'safety', text: `${s.po_deliveries_overdue} purchase order${s.po_deliveries_overdue > 1 ? 's' : ''} past delivery date` });
+  }
   if (s.schedule_items_late > 0) {
     alerts.push({ level: 'safety', text: `${s.schedule_items_late} BOQ item${s.schedule_items_late > 1 ? 's' : ''} behind schedule` });
   }
@@ -158,13 +161,14 @@ export function PortfolioPage({ sites, onOpenSite }) {
         {flagged > 0 ? ` · ${flagged} need${flagged > 1 ? '' : 's'} attention` : ' · nothing urgent'}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(max(140px, calc((100% - 2 * var(--space-3)) / 3)), 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(max(140px, calc((100% - 3 * var(--space-3)) / 4)), 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
         <Stat label="Total budget" value={formatCurrency(sum(sites, 'total_budgeted_cost'))} />
         <Stat label="Work done" value={formatCurrency(sum(sites, 'earned_value'))} />
         <Stat label="Spent" value={formatCurrency(sum(sites, 'actual_cost'))} />
         <Stat label="Cost variance" value={formatCurrency(totalCv)} variant={totalCv >= 0 ? 'positive' : 'negative'} />
         <Stat label="Cash in hand" value={formatCurrency(sum(sites, 'cash_balance'))} />
         <Stat label="Advances out" value={formatCurrency(sum(sites, 'advances_outstanding_amount'))} />
+        <Stat label="On order (POs)" value={formatCurrency(sum(sites, 'po_open_value'))} />
       </div>
 
       <div className="ledger-header">

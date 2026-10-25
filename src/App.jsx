@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { MasterRollPage } from './pages/MasterRollPage';
 import { ProgressPage } from './pages/ProgressPage';
 import { SchedulePage } from './pages/SchedulePage';
+import { PurchasingPage } from './pages/PurchasingPage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
@@ -27,6 +28,7 @@ const TAB_TITLES = {
   'master-roll': 'Master Roll',
   progress: 'Progress',
   schedule: 'Schedule',
+  purchasing: 'Purchasing',
   reports: 'Reports',
   advances: 'Advances',
   cashier: 'Cashier',
@@ -235,6 +237,8 @@ function AppShell() {
 
   const tabs = [
     ...BASE_TABS,
+    ...(hasRole('site_coordinator') || hasRole('cashier') || hasRole('admin') || hasRole('company_owner')
+      ? [{ key: 'purchasing', label: 'Purchasing' }] : []),
     ...(hasRole('site_coordinator') ? [{ key: 'advances', label: 'Advances' }] : []),
     ...(hasRole('cashier') ? [{ key: 'cashier', label: 'Cashier' }] : []),
     ...(hasRole('admin') || hasRole('company_owner') ? [{ key: 'admin', label: 'Admin' }] : []),
@@ -256,6 +260,13 @@ function AppShell() {
         {activeTab === 'progress' && <ProgressPage projectId={projectId} />}
         {activeTab === 'schedule' && <SchedulePage projectId={projectId} canEdit={hasRole('admin') || hasRole('company_owner')} />}
         {activeTab === 'reports' && <ReportsPage projectId={projectId} />}
+        {activeTab === 'purchasing' && (
+          <PurchasingPage
+            projectId={projectId}
+            canManage={hasRole('admin') || hasRole('company_owner')}
+            canReceive={hasRole('admin') || hasRole('company_owner') || hasRole('site_coordinator')}
+          />
+        )}
         {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
         {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
         {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
