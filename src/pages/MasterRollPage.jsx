@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
-import { uploadLabourerPhoto, getLabourerPhotoUrl } from '../lib/photoUpload';
+import { uploadLabourerPhoto, getLabourerPhotoUrl, compressImage } from '../lib/photoUpload';
+import { sendOrQueue, listOutbox } from '../lib/outbox';
 import { useAuth } from '../context/AuthContext';
 import { bhutanToday } from '../lib/today';
 
@@ -73,6 +74,14 @@ export function MasterRollPage({ projectId }) {
     if (!projectId || !user?.id) return;
     let cancelled = false;
     (async () => {
+      // Saved on this phone earlier today without signal, not yet sent.
+      const queued = (await listOutbox().catch(() => [])).find(
+        (i) => i.kind === 'master_roll' && i.projectId === projectId && i.body.date === TODAY && i.status === 'waiting'
+      );
+      if (queued) {
+        if (!cancelled) setTodaysEntry({ ...queued.body, queued: true });
+        return;
+      }
       try {
         const entries = await apiFetch('/api/master-roll/entries', {
           params: { project_id: projectId },
@@ -113,14 +122,12 @@ export function MasterRollPage({ projectId }) {
 
     setSubmitting(true);
     try {
-      const photoPath = await uploadLabourerPhoto(projectId, newLabourerPhoto);
-
       const payload = {
         project_id: projectId,
         name: newLabourerName,
-        photo_url: photoPath,
         id_number: newLabourerIdNumber,
         labour_type: newLabourerType,
+        client_ref: crypto.randomUUID(),
       };
       if (newLabourerType === 'contract') {
         payload.contracted_rate = parseFloat(newLabourerRate);
@@ -137,10 +144,35 @@ export function MasterRollPage({ projectId }) {
         return;
       }
 
-      const newLabourer = await apiFetch('/api/master-roll/labourers', {
-        method: 'POST',
-        body: payload,
-      });
+      let newLabourer;
+      if (navigator.onLine) {
+        payload.photo_url = await uploadLabourerPhoto(projectId, newLabourerPhoto);
+        newLabourer = await apiFetch('/api/master-roll/labourers', { method: 'POST', body: payload });
+      } else {
+        // No signal: keep the compressed photo and the details on the phone;
+        // the outbox uploads the photo, then registers the worker.
+        await sendOrQueue({
+          kind: 'labourer',
+          label: `Register worker: ${newLabourerName} (${newLabourerIdNumber})`,
+          projectId,
+          path: '/api/master-roll/labourers',
+          body: payload,
+          photo: {
+            bucket: 'labourer-photos',
+            path: `${projectId}/${crypto.randomUUID()}.jpg`,
+            blob: await compressImage(newLabourerPhoto),
+            field: 'photo_url',
+          },
+        });
+        setError(null);
+        setShowRegisterForm(false);
+        setNewLabourerName('');
+        setNewLabourerIdNumber('');
+        setNewLabourerRate('');
+        setNewLabourerPhoto(null);
+        alert('No signal: the worker is saved on this phone and will be registered when signal returns. Mark them present after that.');
+        return;
+      }
 
       setSelectedLabourers((prev) => [...prev, { id: newLabourer.id, name: newLabourer.name, present: true }]);
       setShowRegisterForm(false);
@@ -171,26 +203,33 @@ export function MasterRollPage({ projectId }) {
 
     setSubmitting(true);
     try {
-      const created = await apiFetch('/api/master-roll/entries', {
-        method: 'POST',
-        body: {
-          project_id: projectId,
-          date: TODAY,
-          is_no_work_day: isNoWorkDay,
-          no_work_remarks: isNoWorkDay ? noWorkRemarks : null,
-          attendance: isNoWorkDay
-            ? []
-            : selectedLabourers.map((l) => ({ labourer_id: l.id, present: l.present })),
-        },
+      const body = {
+        project_id: projectId,
+        date: TODAY,
+        is_no_work_day: isNoWorkDay,
+        no_work_remarks: isNoWorkDay ? noWorkRemarks : null,
+        attendance: isNoWorkDay
+          ? []
+          : selectedLabourers.map((l) => ({ labourer_id: l.id, present: l.present })),
+      };
+      const outcome = await sendOrQueue({
+        kind: 'master_roll',
+        label: `Master roll ${TODAY}: ${isNoWorkDay ? 'no work' : `${selectedLabourers.length} worker${selectedLabourers.length === 1 ? '' : 's'}`}`,
+        projectId,
+        path: '/api/master-roll/entries',
+        body,
       });
+      const created = outcome.result;
       setSuccess(true);
       setSelectedLabourers([]);
       // Fix #2: record that today's entry now exists so the form is
       // replaced by the "done for today" panel without a page reload.
       setTodaysEntry(
-        created && created.id
-          ? created
-          : { date: TODAY, is_no_work_day: isNoWorkDay, no_work_remarks: noWorkRemarks }
+        outcome.queued
+          ? { ...body, queued: true }
+          : created && created.id
+            ? created
+            : { date: TODAY, is_no_work_day: isNoWorkDay, no_work_remarks: noWorkRemarks }
       );
     } catch (err) {
       // Fix #1: turn the raw database duplicate-key error into a plain,
@@ -218,7 +257,9 @@ export function MasterRollPage({ projectId }) {
       {success && (
         <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>
-            Master roll submitted. All the best for today's work.
+            {todaysEntry?.queued
+              ? 'No signal: master roll saved on this phone. It will be sent automatically when signal returns.'
+              : "Master roll submitted. All the best for today's work."}
           </p>
         </div>
       )}
@@ -235,7 +276,7 @@ export function MasterRollPage({ projectId }) {
       {todaysEntry ? (
         <div className="ticket" style={{ borderColor: 'var(--color-survey)', marginBottom: 'var(--space-5)' }}>
           <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>
-            ✓ Today's Master Roll is done.
+            {todaysEntry.queued ? "✓ Today's Master Roll is saved on this phone, waiting for signal." : "✓ Today's Master Roll is done."}
           </p>
           <p style={{ color: 'var(--color-aggregate)', margin: 'var(--space-2) 0 0', fontSize: 'var(--text-sm)' }}>
             {todaysEntry.is_no_work_day
