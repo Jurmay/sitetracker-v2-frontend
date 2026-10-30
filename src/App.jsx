@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SetPasswordPage } from './pages/SetPasswordPage';
+import { TwoStepCodePage } from './components/TwoStep';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useMyRoles } from './lib/useMyRoles';
 import { LoginPage } from './pages/LoginPage';
@@ -118,7 +119,7 @@ function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, onCh
         </div>
 
         {/* Right: theme picker + actions */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
           <ThemePicker />
           <button
             onClick={onSwitchProject}
@@ -227,7 +228,7 @@ function saveLastProject(id) {
 }
 
 function AppShell() {
-  const { user, loading, signOut, recovering, finishRecovery } = useAuth();
+  const { user, loading, signOut, recovering, finishRecovery, needsCode } = useAuth();
   const [changingPassword, setChangingPassword] = useState(false);
   // The installed app always opens at "/", so the last project is
   // remembered on the phone and reopened without needing a signal.
@@ -261,12 +262,13 @@ function AppShell() {
   }
 
   if (!user) return <LoginPage />;
+  if (needsCode) return <TwoStepCodePage />;
   // Opened from a password-reset email: choose the new password first.
   if (recovering) {
     return <SetPasswordPage title="Set a new password" intro="Signed in from the reset link as" onDone={finishRecovery} />;
   }
   if (changingPassword) {
-    return <SetPasswordPage title="Change password" onDone={() => setChangingPassword(false)} onCancel={() => setChangingPassword(false)} />;
+    return <SetPasswordPage title="Change password" showTwoStep onDone={() => setChangingPassword(false)} onCancel={() => setChangingPassword(false)} />;
   }
   if (!projectId) return <><OutboxBanner /><ProjectPickerPage onSelectProject={selectProject} /></>;
 

@@ -1,69 +1,193 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
 import { useAuth } from '../context/AuthContext';
 
-// Improvement #1: Permission Checkboxes panel
-// Fetches the report permission grid for a chosen user and lets admin
-// toggle each report on/off via PUT /api/dashboard/permissions
-function PermissionsPanel({ projectId }) {
-  const [lookupEmail, setLookupEmail] = useState('');
-  const [targetUser, setTargetUser] = useState(null); // { user_id, name, email, roles }
-  const [permissions, setPermissions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(null);
+// Admin, in four parts: Approvals (money waiting for a decision), People
+// (who has access and what they can do), Project setup (BOQ) and Activity
+// (who changed what). Role rules (only an Owner grants Owner, same company
+// only, at least one Owner) are enforced by the database; this page only
+// hides choices that would be refused.
+
+const ROLES = [
+  { key: 'company_owner', label: 'Company Owner', does: 'Everything an Admin can do, plus create projects and add or remove owners.' },
+  { key: 'admin', label: 'Admin', does: 'Approves advances and fund requests, sets up the BOQ, manages people, purchasing and client bills.' },
+  { key: 'site_coordinator', label: 'Site Coordinator', does: 'Sends the master roll and progress reports, records deliveries, asks for site advances.' },
+  { key: 'cashier', label: 'Cashier', does: 'Verifies and pays out advances, checks settlements, asks for funds, records client payments.' },
+  { key: 'viewer', label: 'Viewer', does: 'Read only. Financial reports only if granted under Report access.' },
+];
+const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.key, r.label]));
+const CATEGORY_LABEL = { work_tied: 'Work item', subcontract: 'Subcontract', overhead: 'Overhead' };
+
+const ENTITY_LABEL = {
+  project_roles: 'role', advance_requisitions: 'advance', advance_requisition_actions: 'advance step',
+  advance_settlements: 'settlement', fund_requisitions: 'fund request', fund_receipts: 'fund receipt',
+  progress_reports: 'progress report', progress_corrections: 'progress correction', master_roll_entries: 'master roll',
+  boq_items: 'BOQ item', boq_sections: 'BOQ section', boq_variations: 'BOQ variation', purchase_orders: 'purchase order',
+  goods_receipts: 'delivery', suppliers: 'supplier', client_bills: 'client bill', client_bill_payments: 'client payment',
+  labourers: 'worker', projects: 'project', project_settings: 'project settings',
+};
+
+function money(n) {
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(n ?? 0);
+}
+function formatDate(iso, withTime = false) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return withTime
+    ? d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Thimphu' })
+    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Thimphu' });
+}
+
+function Notice({ error, success }) {
+  if (error) {
+    return (
+      <div role="alert" className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-4)' }}>
+        <p style={{ color: 'var(--color-brick)', margin: 0 }}>{error}</p>
+      </div>
+    );
+  }
+  if (success) {
+    return (
+      <div role="status" className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-4)' }}>
+        <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>{success}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+function SectionTitle({ title, note }) {
+  return (
+    <div className="ledger-header">
+      <h3>{title}</h3>
+      {note && <span className="ledger-header-note">{note}</span>}
+    </div>
+  );
+}
+
+const small = { padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)' };
+
+// ---------------------------------------------------------------- approvals
+
+function DecisionCard({ title, lines, busy, onApprove, onReject }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  return (
+    <div className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+          <p style={{ margin: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>{title}</p>
+          {lines.map((l) => (
+            <p key={l} className="numeric" style={{ margin: '4px 0 0', color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>{l}</p>
+          ))}
+        </div>
+        {!rejecting && (
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button className="primary" disabled={busy} onClick={onApprove}>Approve</button>
+            <button disabled={busy} onClick={() => setRejecting(true)}>Reject</button>
+          </div>
+        )}
+      </div>
+      {rejecting && (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label style={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-sm)' }}>
+            Reason for rejecting (they will see this)
+            <input value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+          </label>
+          <button disabled={busy || !reason.trim()} onClick={() => onReject(reason.trim())}>Reject</button>
+          <button onClick={() => { setRejecting(false); setReason(''); }}>Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Approvals({ projectId }) {
+  const [advances, setAdvances] = useState([]);
+  const [funds, setFunds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // Improvement: look the user up by EMAIL (not a raw UUID), then load
-  // their permission grid. Uses the /api/admin/users/lookup endpoint.
-  async function handleLookup(e) {
-    e.preventDefault();
-    if (!lookupEmail.trim()) return;
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    setPermissions([]);
-    setTargetUser(null);
+  const load = useCallback(() => {
+    Promise.all([
+      apiFetch('/api/financial/advances', { params: { project_id: projectId } }),
+      apiFetch('/api/financial/fund-requisitions', { params: { project_id: projectId } }),
+    ])
+      .then(([a, f]) => { setAdvances(a); setFunds(f); })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
 
+  async function act(id, path, body, done) {
+    setBusyId(id); setError(null); setSuccess(null);
     try {
-      const found = await apiFetch('/api/admin/users/lookup', {
-        method: 'POST',
-        body: { project_id: projectId, email: lookupEmail.trim() },
-      });
-      setTargetUser(found);
-
-      const perms = await apiFetch(`/api/dashboard/permissions/${found.user_id}`, {
-        params: { project_id: projectId },
-      });
-      setPermissions(perms);
-      if (perms.length === 0) {
-        setError('This user has no permission rows yet on this project.');
-      }
+      const result = await apiFetch(path, { method: 'POST', body });
+      if (result && result._email_warning) setError(result._email_warning);
+      else setSuccess(done);
+      load();
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setBusyId(null);
     }
   }
 
-  async function togglePermission(reportKey, currentlyGranted) {
-    if (!targetUser) return;
-    setSaving(reportKey);
-    setError(null);
+  const pendingAdvances = advances.filter((a) => a.status === 'pending_approval');
+  const pendingFunds = funds.filter((f) => f.status === 'pending_approval');
+  const who = (r) => [r.requested_by_name && `by ${r.requested_by_name}`, r.created_at && formatDate(r.created_at, true)].filter(Boolean).join(' · ');
+
+  if (loading) return <p style={{ color: 'var(--color-aggregate)' }}>Loading…</p>;
+  return (
+    <>
+      <Notice error={error} success={success} />
+      <SectionTitle title="Advances" note="checked by the cashier · approving lets the cashier pay out" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+        {pendingAdvances.length === 0 && <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>Nothing waiting.</p>}
+        {pendingAdvances.map((a) => (
+          <DecisionCard key={a.id} title={a.justification} busy={busyId === a.id}
+            lines={[`Nu. ${money(a.amount)} · ${CATEGORY_LABEL[a.advance_category] ?? a.advance_category}`, who(a)].filter(Boolean)}
+            onApprove={() => act(a.id, `/api/financial/advances/${a.id}/approve`, {}, 'Advance approved.')}
+            onReject={(remarks) => act(a.id, `/api/financial/advances/${a.id}/reject`, { remarks }, 'Advance rejected.')} />
+        ))}
+      </div>
+      <SectionTitle title="Fund requests" note="approving records the money in and emails Accounts if set up" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        {pendingFunds.length === 0 && <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>Nothing waiting.</p>}
+        {pendingFunds.map((f) => (
+          <DecisionCard key={f.id} title={f.reason} busy={busyId === f.id}
+            lines={[`Nu. ${money(f.amount)}`, who(f)].filter(Boolean)}
+            onApprove={() => act(f.id, `/api/financial/fund-requisitions/${f.id}/approve`, {}, 'Fund request approved.')}
+            onReject={(reason) => act(f.id, `/api/financial/fund-requisitions/${f.id}/reject`, { reason }, 'Fund request rejected.')} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- people
+
+function ReportAccess({ projectId, member }) {
+  const [permissions, setPermissions] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    apiFetch(`/api/dashboard/permissions/${member.user_id}`, { params: { project_id: projectId } })
+      .then(setPermissions)
+      .catch((err) => setError(err.message));
+  }, [projectId, member.user_id]);
+
+  async function toggle(p) {
+    setSaving(p.report_key); setError(null);
     try {
       await apiFetch('/api/dashboard/permissions', {
-        method: 'PUT',
-        params: { project_id: projectId },
-        body: {
-          user_id: targetUser.user_id,
-          report_definition_key: reportKey,
-          granted: !currentlyGranted,
-        },
+        method: 'PUT', params: { project_id: projectId },
+        body: { user_id: member.user_id, report_definition_key: p.report_key, granted: !p.granted },
       });
-      setPermissions((prev) =>
-        prev.map((p) => (p.report_key === reportKey ? { ...p, granted: !currentlyGranted } : p))
-      );
-      setSuccess(`${!currentlyGranted ? 'Granted' : 'Revoked'}.`);
+      setPermissions((prev) => prev.map((x) => (x.report_key === p.report_key ? { ...x, granted: !p.granted } : x)));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -71,423 +195,395 @@ function PermissionsPanel({ projectId }) {
     }
   }
 
-  const byCategory = permissions.reduce((acc, p) => {
-    const cat = p.category ?? 'Other';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(p);
-    return acc;
-  }, {});
+  if (error) return <p style={{ color: 'var(--color-brick)', fontSize: 'var(--text-sm)', margin: 0 }}>{error}</p>;
+  if (!permissions) return <p style={{ color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)', margin: 0 }}>Loading report access…</p>;
+  if (permissions.length === 0) return <p style={{ color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)', margin: 0 }}>No reports set up for this person yet.</p>;
+  return (
+    <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+      <legend style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-aggregate)', marginBottom: 'var(--space-2)' }}>
+        Reports and dashboard cards they can see
+      </legend>
+      {permissions.map((p) => (
+        <label key={p.report_key} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minHeight: 40, fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={p.granted} disabled={saving === p.report_key} onChange={() => toggle(p)}
+            style={{ width: 20, height: 20, margin: 0, flexShrink: 0, accentColor: 'var(--color-primary)' }} />
+          <span style={{ flex: 1 }}>{p.report_name}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>{p.category}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
-  const ROLE_LABELS = {
-    company_owner: 'Company Owner', admin: 'Admin',
-    site_coordinator: 'Site Coordinator', cashier: 'Cashier', viewer: 'Viewer',
-  };
+function MemberCard({ member, me, canGrantOwner, projectId, onChanged, onMessage }) {
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(null); // role key being removed
+  const [addRole, setAddRole] = useState('');
+  const [showReports, setShowReports] = useState(false);
+
+  const active = member.roles.filter((r) => r.status === 'active').map((r) => r.role);
+  const removed = member.roles.filter((r) => r.status !== 'active').map((r) => r.role);
+  const addable = ROLES.filter((r) => !active.includes(r.key) && (r.key !== 'company_owner' || canGrantOwner));
+  const isMe = member.user_id === me;
+
+  async function call(path, body, done) {
+    setBusy(true); onMessage(null, null);
+    try {
+      await apiFetch(path, { method: 'POST', body: { project_id: projectId, ...body } });
+      onMessage(null, done);
+      setConfirming(null); setAddRole('');
+      onChanged();
+    } catch (err) {
+      onMessage(err.message, null);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const setRole = (role, on) => call('/api/admin/users/role-status', { user_id: member.user_id, role, active: on },
+    on ? `${member.name} is now ${ROLE_LABEL[role]}.` : `${ROLE_LABEL[role]} removed from ${member.name}.`);
+  const canChange = (role) => role !== 'company_owner' || canGrantOwner;
+
+  let status;
+  if (member.invite_pending) status = `Invite sent ${formatDate(member.invited_at)}, not accepted yet`;
+  else if (member.last_sign_in_at) status = `Last signed in ${formatDate(member.last_sign_in_at)}`;
+  else status = 'Never signed in';
 
   return (
-    <div>
-      <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}>
-        <h3>Report &amp; Dashboard Permissions</h3>
-        <span className="ledger-header-note">control what each user can access</span>
+    <div className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', opacity: member.has_active_role ? 1 : 0.85 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>{member.name}{isMe && <span style={{ color: 'var(--color-aggregate)', fontWeight: 400 }}> (you)</span>}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', overflowWrap: 'anywhere' }}>{member.email}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: member.invite_pending ? 'var(--color-primary-deep)' : 'var(--color-aggregate)' }}>{status}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {member.invite_pending && <button style={small} disabled={busy} onClick={() => call('/api/admin/users/resend-invite', { user_id: member.user_id }, `Invite sent again to ${member.email}.`)}>Resend invite</button>}
+          {!member.invite_pending && !isMe && <button style={small} disabled={busy} onClick={() => call('/api/admin/users/reset-password', { email: member.email }, `Password reset email sent to ${member.email}.`)}>Send password reset</button>}
+          {member.has_active_role && <button style={small} aria-expanded={showReports} onClick={() => setShowReports(!showReports)}>{showReports ? 'Hide report access' : 'Report access'}</button>}
+        </div>
       </div>
 
-      {success && (
-        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-4)' }}>
-          <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontSize: 'var(--text-sm)' }}>{success}</p>
-        </div>
-      )}
-      {error && (
-        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-4)' }}>
-          <p style={{ color: 'var(--color-brick)', margin: 0, fontSize: 'var(--text-sm)' }}>{error}</p>
-        </div>
-      )}
-
-      <form onSubmit={handleLookup} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
-        <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>
-          View / edit a user&rsquo;s permissions
-        </p>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', margin: '0 0 var(--space-3)' }}>
-          Enter the user&rsquo;s email address.
-        </p>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          <input
-            type="email"
-            value={lookupEmail}
-            onChange={(e) => setLookupEmail(e.target.value)}
-            placeholder="their@email.com"
-            required
-            style={{ flex: '1 1 180px' }}
-          />
-          <button type="submit" className="primary" disabled={loading} style={{ flexShrink: 0 }}>
-            {loading ? 'Loading…' : 'Load'}
-          </button>
-        </div>
-      </form>
-
-      {targetUser && (
-        <div className="ticket ticket--sunken" style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>{targetUser.name}</p>
-          <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>
-            {targetUser.email} &middot; {targetUser.roles.map((r) => ROLE_LABELS[r] ?? r).join(', ')}
-          </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+        {active.length === 0 && <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>No access to this project.</span>}
+        {active.map((role) => (
+          <span key={role} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', padding: '2px 4px 2px 10px', borderRadius: 999, border: '1.5px solid var(--color-aggregate-light)', fontSize: 'var(--text-sm)' }}>
+            {ROLE_LABEL[role] ?? role}
+            {canChange(role) && !(isMe && (role === 'admin' || role === 'company_owner')) && confirming !== role && (
+              <button aria-label={`Remove ${ROLE_LABEL[role]} from ${member.name}`} style={{ ...small, padding: '0 8px' }} disabled={busy} onClick={() => setConfirming(role)}>Remove</button>
+            )}
+          </span>
+        ))}
+      </div>
+      {confirming && (
+        <div className="ticket ticket--sunken" style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', padding: 'var(--space-3) var(--space-4)' }}>
+          <span style={{ flex: '1 1 220px', fontSize: 'var(--text-sm)' }}>
+            Remove <strong>{ROLE_LABEL[confirming]}</strong> from {member.name}? {active.length === 1 ? 'They will lose access to this project.' : 'Their other roles stay.'}
+          </span>
+          <button disabled={busy} onClick={() => setRole(confirming, false)}>Remove</button>
+          <button onClick={() => setConfirming(null)}>Cancel</button>
         </div>
       )}
 
-      {permissions.length > 0 && (
-        <div className="ticket" style={{ marginBottom: 'var(--space-6)' }}>
-          {Object.entries(byCategory).map(([category, perms]) => (
-            <div key={category} style={{ marginBottom: 'var(--space-4)' }}>
-              <p style={{
-                fontWeight: 700, fontSize: 'var(--text-xs)', textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: 'var(--color-aggregate)', margin: '0 0 var(--space-2)',
-              }}>
-                {category}
-              </p>
-              {perms.map((p) => (
-                <label
-                  key={p.report_key}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-                    padding: 'var(--space-3) 0', minHeight: 44,
-                    borderBottom: '1px solid var(--color-aggregate-faint)', cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={p.granted}
-                    disabled={saving === p.report_key}
-                    onChange={() => togglePermission(p.report_key, p.granted)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--color-primary)', flexShrink: 0, margin: 0 }}
-                  />
-                  <span style={{ fontSize: 'var(--text-sm)', flex: 1 }}>{p.report_name}</span>
-                  {saving === p.report_key
-                    ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>saving…</span>
-                    : p.granted && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-survey-deep)', fontWeight: 600 }}>✓</span>}
-                </label>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span>{active.length ? 'Add a role' : 'Give access as'}</span>
+          <select value={addRole} onChange={(e) => setAddRole(e.target.value)} style={{ width: 'auto' }}>
+            <option value="">Choose…</option>
+            {addable.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </label>
+        <button style={small} disabled={busy || !addRole} onClick={() => setRole(addRole, true)}>{active.length ? 'Add' : 'Give access'}</button>
+        {removed.filter((r) => !active.includes(r)).length > 0 && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)' }}>
+            Removed before: {removed.filter((r) => !active.includes(r)).map((r) => ROLE_LABEL[r] ?? r).join(', ')}
+          </span>
+        )}
+      </div>
+
+      {showReports && <ReportAccess projectId={projectId} member={member} />}
     </div>
   );
 }
 
-export function AdminPage({ projectId }) {
+function AddPerson({ projectId, members, canGrantOwner, onDone, onMessage }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('site_coordinator');
+  const [busy, setBusy] = useState(false);
+  const existing = members.find((m) => m.email && m.email.toLowerCase() === email.trim().toLowerCase());
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true); onMessage(null, null);
+    try {
+      if (existing) {
+        await apiFetch('/api/admin/users/assign-role', { method: 'POST', body: { project_id: projectId, email: email.trim(), role } });
+        onMessage(null, `${existing.name} now has ${ROLE_LABEL[role]} access.`);
+      } else {
+        await apiFetch('/api/admin/users/invite', { method: 'POST', body: { project_id: projectId, email: email.trim(), name: name.trim(), role } });
+        onMessage(null, `Invite sent to ${email.trim()}. They'll get an email to set their password.`);
+      }
+      setEmail(''); setName('');
+      onDone();
+    } catch (err) {
+      onMessage(err.message, null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+      <p style={{ fontWeight: 600, margin: 0 }}>Add a person to this project</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-sm)' }}>
+          Email
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
+        </label>
+        {!existing && (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-sm)' }}>
+            Full name
+            <input value={name} onChange={(e) => setName(e.target.value)} required />
+          </label>
+        )}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-sm)' }}>
+          Role
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            {ROLES.filter((r) => r.key !== 'company_owner' || canGrantOwner).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>
+        {existing
+          ? `${existing.name} already has an account in your company; they'll get access straight away.`
+          : 'Someone new gets an email invite to set their own password. Nobody else sees it.'}
+      </p>
+      <button type="submit" className="primary" disabled={busy} style={{ alignSelf: 'flex-start' }}>
+        {busy ? 'Working…' : existing ? 'Give access' : 'Send invite'}
+      </button>
+    </form>
+  );
+}
+
+function People({ projectId }) {
   const { user } = useAuth();
-  const [advances, setAdvances] = useState([]);
-  const [fundRequisitions, setFundRequisitions] = useState([]);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [showRoles, setShowRoles] = useState(false);
+
+  const load = useCallback(() => {
+    apiFetch('/api/admin/users/members', { params: { project_id: projectId } })
+      .then(setData)
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+  const onMessage = (err, ok) => { setError(err); setSuccess(ok); };
+
+  if (!data) return error ? <Notice error={error} /> : <p style={{ color: 'var(--color-aggregate)' }}>Loading people…</p>;
+  const withAccess = data.members.filter((m) => m.has_active_role);
+  const others = data.members.filter((m) => !m.has_active_role);
+
+  return (
+    <>
+      <Notice error={error} success={success} />
+      <AddPerson projectId={projectId} members={data.members} canGrantOwner={data.can_grant_owner} onDone={load} onMessage={onMessage} />
+
+      <button style={{ ...small, marginBottom: 'var(--space-4)' }} aria-expanded={showRoles} onClick={() => setShowRoles(!showRoles)}>
+        {showRoles ? 'Hide what each role can do' : 'What can each role do?'}
+      </button>
+      {showRoles && (
+        <dl className="ticket ticket--sunken" style={{ margin: '0 0 var(--space-5)', display: 'grid', gridTemplateColumns: 'minmax(120px, max-content) 1fr', gap: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-sm)' }}>
+          {ROLES.map((r) => (
+            <div key={r.key} style={{ display: 'contents' }}>
+              <dt style={{ fontWeight: 600 }}>{r.label}</dt>
+              <dd style={{ margin: 0, color: 'var(--color-aggregate)' }}>{r.does}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      <SectionTitle title={`With access (${withAccess.length})`} note={data.can_grant_owner ? 'you are an Owner' : 'only an Owner can add or remove owners'} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+        {withAccess.map((m) => (
+          <MemberCard key={m.user_id} member={m} me={user?.id} canGrantOwner={data.can_grant_owner} projectId={projectId} onChanged={load} onMessage={onMessage} />
+        ))}
+      </div>
+      {others.length > 0 && (
+        <>
+          <SectionTitle title={`Others in your company (${others.length})`} note="no access to this project" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {others.map((m) => (
+              <MemberCard key={m.user_id} member={m} me={user?.id} canGrantOwner={data.can_grant_owner} projectId={projectId} onChanged={load} onMessage={onMessage} />
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- setup
+
+function Setup({ projectId }) {
   const [sections, setSections] = useState([]);
-  const [boqItems, setBoqItems] = useState([]);
-
-  const [newSectionName, setNewSectionName] = useState('');
-  const [newItemSectionId, setNewItemSectionId] = useState('');
-  const [newItemDescription, setNewItemDescription] = useState('');
-  const [newItemUnit, setNewItemUnit] = useState('');
-  const [newItemQuantity, setNewItemQuantity] = useState('');
-  const [newItemRate, setNewItemRate] = useState('');
-
-  const [assignEmail, setAssignEmail] = useState('');
-  const [assignRole, setAssignRole] = useState('site_coordinator');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState('site_coordinator');
-  const [resetEmail, setResetEmail] = useState('');
-
-  const [loading, setLoading] = useState(true);
-  const [actingId, setActingId] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [items, setItems] = useState([]);
+  const [sectionName, setSectionName] = useState('');
+  const [item, setItem] = useState({ section_id: '', description: '', unit: '', quantity: '', rate: '' });
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  function loadAll() {
-    if (!projectId) return;
-    setLoading(true);
-    Promise.all([
-      apiFetch('/api/financial/advances', { params: { project_id: projectId } }),
-      apiFetch('/api/financial/fund-requisitions', { params: { project_id: projectId } }),
-      apiFetch('/api/boq/sections', { params: { project_id: projectId } }),
-    ])
-      .then(async ([advs, freqs, secs]) => {
-        setAdvances(advs);
-        setFundRequisitions(freqs);
+  const load = useCallback(() => {
+    apiFetch('/api/boq/sections', { params: { project_id: projectId } })
+      .then(async (secs) => {
         setSections(secs);
-        const itemLists = await Promise.all(secs.map((s) => apiFetch('/api/boq/items', { params: { section_id: s.id } })));
-        setBoqItems(itemLists.flat());
+        const lists = await Promise.all(secs.map((s) => apiFetch('/api/boq/items', { params: { section_id: s.id } })));
+        setItems(lists.flat());
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(fn, done) {
+    setBusy(true); setError(null); setSuccess(null);
+    try { await fn(); setSuccess(done); load(); return true; } catch (err) { setError(err.message); return false; } finally { setBusy(false); }
   }
-
-  useEffect(loadAll, [projectId, user?.id]);
-
-  async function runAction(id, fn) {
-    setError(null);
-    setSuccess(null);
-    setActingId(id);
-    try {
-      const result = await fn();
-      if (result && result._email_warning) {
-        setError(result._email_warning);
-      } else {
-        setSuccess('Action completed.');
-      }
-      loadAll();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setActingId(null);
-    }
-  }
-
-  async function handleRejectAdvance(id) {
-    const remarks = window.prompt('Reason for rejecting this advance:');
-    if (remarks) {
-      runAction(id, () =>
-        apiFetch(`/api/financial/advances/${id}/reject`, { method: 'POST', body: { remarks } })
-      );
-    }
-  }
-
-  async function handleCreateSection(e) {
-    e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
-    try {
-      await apiFetch('/api/boq/sections', { method: 'POST', body: { project_id: projectId, name: newSectionName, sort_order: sections.length } });
-      setSuccess('Section added.'); setNewSectionName(''); loadAll();
-    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
-  }
-
-  async function handleCreateItem(e) {
-    e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
-    try {
-      await apiFetch('/api/boq/items', {
-        method: 'POST',
-        body: { section_id: newItemSectionId, description: newItemDescription, unit: newItemUnit, quantity: parseFloat(newItemQuantity), rate: parseFloat(newItemRate) },
-      });
-      setSuccess('Work item added.'); setNewItemDescription(''); setNewItemUnit(''); setNewItemQuantity(''); setNewItemRate(''); loadAll();
-    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
-  }
-
-  async function handleAssignRole(e) {
-    e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
-    try {
-      await apiFetch('/api/admin/users/assign-role', { method: 'POST', body: { project_id: projectId, email: assignEmail, role: assignRole } });
-      setSuccess(`${assignEmail} granted ${assignRole} on this project.`); setAssignEmail('');
-    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
-  }
-
-  async function handleInviteUser(e) {
-    e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
-    try {
-      await apiFetch('/api/admin/users/invite', { method: 'POST', body: { project_id: projectId, email: inviteEmail, name: inviteName, role: inviteRole } });
-      setSuccess(`Invite sent to ${inviteEmail}.`); setInviteEmail(''); setInviteName('');
-    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
-  }
-
-  async function handleResetPassword(e) {
-    e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
-    try {
-      await apiFetch('/api/admin/users/reset-password', { method: 'POST', body: { project_id: projectId, email: resetEmail } });
-      setSuccess(`Password reset email sent to ${resetEmail}.`); setResetEmail('');
-    } catch (err) { setError(err.message); } finally { setSubmitting(false); }
-  }
-
-  const pendingApproval = advances.filter((a) => a.status === 'pending_approval');
-  const pendingFundApproval = fundRequisitions.filter((f) => f.status === 'pending_approval');
-
-  const labelStyle = { display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' };
+  const set = (k) => (e) => setItem({ ...item, [k]: e.target.value });
+  const label = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-sm)' };
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
-      <h1 style={{ marginBottom: 'var(--space-6)' }}>Admin</h1>
-
-      {success && (
-        <div className="ticket ticket--accent-survey" style={{ marginBottom: 'var(--space-5)' }}>
-          <p style={{ color: 'var(--color-survey-deep)', margin: 0, fontWeight: 600 }}>{success}</p>
+    <>
+      <Notice error={error} success={success} />
+      <p style={{ marginTop: 0, color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
+        For a won tender, “New project from won tender” on the project list loads the whole BOQ at once. Use this for small additions.
+      </p>
+      <form onSubmit={(e) => { e.preventDefault(); save(() => apiFetch('/api/boq/sections', { method: 'POST', body: { project_id: projectId, name: sectionName.trim(), sort_order: sections.length } }), 'Section added.').then((ok) => ok && setSectionName('')); }}
+        className="ticket" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
+        <label style={{ ...label, flex: '1 1 220px' }}>New section<input value={sectionName} onChange={(e) => setSectionName(e.target.value)} placeholder="e.g. Civil Works" required /></label>
+        <button type="submit" className="primary" disabled={busy}>Add section</button>
+      </form>
+      <form onSubmit={(e) => { e.preventDefault(); save(() => apiFetch('/api/boq/items', { method: 'POST', body: { section_id: item.section_id, description: item.description.trim(), unit: item.unit.trim(), quantity: parseFloat(item.quantity), rate: parseFloat(item.rate) } }), 'Work item added.').then((ok) => ok && setItem({ ...item, description: '', unit: '', quantity: '', rate: '' })); }}
+        className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+        <p style={{ fontWeight: 600, margin: 0 }}>New work item</p>
+        <label style={label}>Section
+          <select value={item.section_id} onChange={set('section_id')} required>
+            <option value="">Choose a section…</option>
+            {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <label style={label}>Description<input value={item.description} onChange={set('description')} required /></label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
+          <label style={label}>Unit<input value={item.unit} onChange={set('unit')} placeholder="Cu.m" required /></label>
+          <label style={label}>Quantity<input type="number" min="0" step="any" inputMode="decimal" value={item.quantity} onChange={set('quantity')} required /></label>
+          <label style={label}>Rate (Nu.)<input type="number" min="0" step="any" inputMode="decimal" value={item.rate} onChange={set('rate')} required /></label>
         </div>
-      )}
-      {error && (
-        <div className="ticket ticket--accent-brick" style={{ marginBottom: 'var(--space-5)' }}>
-          <p style={{ color: 'var(--color-brick)', margin: 0 }}>{error}</p>
-        </div>
-      )}
-
-      {loading ? (
-        <p style={{ color: 'var(--color-aggregate)' }}>Loading…</p>
-      ) : (
-        <>
-          {/* Advances awaiting admin approval */}
-          <div className="ledger-header">
-            <h3>Advances awaiting your approval</h3>
-            <span className="ledger-header-note">verified by Cashier · approving allows disbursement</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-            {pendingApproval.length === 0 ? (
-              <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>All caught up — nothing awaiting your approval.</p>
-            ) : pendingApproval.map((a) => (
-              <div key={a.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>{a.justification}</p>
-                  <p className="numeric" style={{ margin: '4px 0 0', color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
-                    Nu. {a.amount?.toLocaleString()} &middot; {a.advance_category}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <button
-                    className="primary"
-                    disabled={actingId === a.id}
-                    onClick={() => runAction(a.id, () =>
-                      apiFetch(`/api/financial/advances/${a.id}/approve`, { method: 'POST', body: {} })
-                    )}
-                  >
-                    Approve
-                  </button>
-                  <button disabled={actingId === a.id} onClick={() => handleRejectAdvance(a.id)}>
-                    Reject
-                  </button>
-                </div>
+        <button type="submit" className="primary" disabled={busy} style={{ alignSelf: 'flex-start' }}>Add work item</button>
+      </form>
+      {sections.map((s) => {
+        const list = items.filter((i) => i.section_id === s.id);
+        return (
+          <div key={s.id} style={{ marginBottom: 'var(--space-4)' }}>
+            <p style={{ fontWeight: 700, fontSize: 'var(--text-sm)', margin: '0 0 var(--space-2)' }}>{s.name} <span style={{ fontWeight: 400, color: 'var(--color-aggregate)' }}>· {list.length} item{list.length === 1 ? '' : 's'}</span></p>
+            {list.map((i) => (
+              <div key={i.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)' }}>
+                <span style={{ fontSize: 'var(--text-sm)', minWidth: 0, overflowWrap: 'anywhere' }}>{i.description}</span>
+                <span className="numeric" style={{ color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>{i.quantity} {i.unit} @ {money(i.rate)}</span>
               </div>
             ))}
           </div>
+        );
+      })}
+    </>
+  );
+}
 
-          {/* Fund requisitions */}
-          <div className="ledger-header">
-            <h3>Fund requisitions awaiting your approval</h3>
-            <span className="ledger-header-note">generates a receipt · emails Accounts if configured</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
-            {pendingFundApproval.length === 0 ? (
-              <p style={{ color: 'var(--color-aggregate)', fontStyle: 'italic' }}>All caught up — nothing awaiting approval.</p>
-            ) : pendingFundApproval.map((f) => (
-              <div key={f.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600 }}>{f.reason}</p>
-                  <p className="numeric" style={{ margin: '4px 0 0', color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
-                    Nu. {f.amount?.toLocaleString()}
-                  </p>
-                </div>
-                <button
-                  className="primary"
-                  disabled={actingId === f.id}
-                  onClick={() => runAction(f.id, () =>
-                    apiFetch(`/api/financial/fund-requisitions/${f.id}/approve`, { method: 'POST', body: {} })
-                  )}
-                >
-                  Approve
-                </button>
-              </div>
-            ))}
-          </div>
+// ---------------------------------------------------------------- activity
 
-          {/* BOQ Setup */}
-          <div className="ledger-header"><h3>BOQ setup</h3></div>
+function describe(row, names) {
+  const what = ENTITY_LABEL[row.entity_type] ?? row.entity_type.replace(/_/g, ' ');
+  const after = row.after_value ?? {};
+  const before = row.before_value ?? {};
+  if (row.entity_type === 'project_roles') {
+    const person = names[after.user_id ?? before.user_id] ?? 'someone';
+    const role = ROLE_LABEL[after.role ?? before.role] ?? 'a role';
+    if (row.action_type === 'insert') return `gave ${person} the ${role} role`;
+    if (row.action_type === 'update' && before.status !== after.status) {
+      return after.status === 'active' ? `gave ${person} the ${role} role back` : `removed ${role} from ${person}`;
+    }
+    if (row.action_type === 'delete') return `deleted ${person}'s ${role} role`;
+  }
+  if (row.action_type === 'update' && before.status && after.status && before.status !== after.status) {
+    return `changed a ${what} from ${before.status.replace(/_/g, ' ')} to ${after.status.replace(/_/g, ' ')}`;
+  }
+  const verb = { insert: 'added', update: 'updated', delete: 'deleted' }[row.action_type] ?? row.action_type;
+  return `${verb} a ${what}`;
+}
 
-          <form onSubmit={handleCreateSection} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
-            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-3)' }}>Add a section</p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <input value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} placeholder="e.g. Civil Works" required style={{ flex: 1 }} />
-              <button type="submit" className="primary" disabled={submitting}>Add section</button>
-            </div>
-          </form>
+function Activity({ projectId }) {
+  const [rows, setRows] = useState(null);
+  const [names, setNames] = useState({});
+  const [error, setError] = useState(null);
 
-          <form onSubmit={handleCreateItem} className="ticket" style={{ marginBottom: 'var(--space-6)' }}>
-            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-3)' }}>Add a work item</p>
-            <label style={labelStyle}>Section</label>
-            <select value={newItemSectionId} onChange={(e) => setNewItemSectionId(e.target.value)} required style={{ marginBottom: 'var(--space-3)' }}>
-              <option value="">Select a section…</option>
-              {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <label style={labelStyle}>Description</label>
-            <input value={newItemDescription} onChange={(e) => setNewItemDescription(e.target.value)} required style={{ marginBottom: 'var(--space-3)' }} />
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Unit</label>
-                <input value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} placeholder="sqm" required />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Quantity</label>
-                <input type="number" min="0" step="0.01" value={newItemQuantity} onChange={(e) => setNewItemQuantity(e.target.value)} required />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Rate</label>
-                <input type="number" min="0" step="0.01" value={newItemRate} onChange={(e) => setNewItemRate(e.target.value)} required />
-              </div>
-            </div>
-            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>Add work item</button>
-          </form>
+  useEffect(() => {
+    Promise.all([
+      apiFetch('/api/admin/users/activity', { params: { project_id: projectId, limit: 150 } }),
+      apiFetch('/api/admin/users/members', { params: { project_id: projectId } }),
+    ])
+      .then(([acts, people]) => {
+        setRows(acts);
+        setNames(Object.fromEntries(people.members.map((m) => [m.user_id, m.name])));
+      })
+      .catch((err) => setError(err.message));
+  }, [projectId]);
 
-          {boqItems.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
-              {boqItems.map((item) => (
-                <div key={item.id} className="ticket" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{item.description}</span>
-                  <span className="numeric" style={{ color: 'var(--color-aggregate)' }}>
-                    {item.quantity} {item.unit} &middot; {item.rate}/{item.unit}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+  if (error) return <Notice error={error} />;
+  if (!rows) return <p style={{ color: 'var(--color-aggregate)' }}>Loading activity…</p>;
+  return (
+    <>
+      <p style={{ marginTop: 0, color: 'var(--color-aggregate)', fontSize: 'var(--text-sm)' }}>
+        Every change on this project is recorded automatically and can't be edited. Showing the latest {rows.length}.
+      </p>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        {rows.map((r) => (
+          <li key={r.id} className="ticket" style={{ padding: 'var(--space-3) var(--space-4)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--text-sm)', minWidth: 0 }}><strong>{r.actor_name}</strong> {describe(r, names)}</span>
+            <time dateTime={r.created_at} className="numeric" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-aggregate)', whiteSpace: 'nowrap' }}>{formatDate(r.created_at, true)}</time>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
 
-          {/* Improvement #1: Permission Checkboxes panel */}
-          <PermissionsPanel projectId={projectId} />
+// ---------------------------------------------------------------- page
 
-          {/* User Management */}
-          <div className="ledger-header" style={{ marginTop: 'var(--space-6)' }}><h3>Users</h3></div>
+const PARTS = [
+  { key: 'approvals', label: 'Approvals' },
+  { key: 'people', label: 'People' },
+  { key: 'setup', label: 'Project setup' },
+  { key: 'activity', label: 'Activity' },
+];
 
-          <form onSubmit={handleAssignRole} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
-            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Assign role to an existing user</p>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
-              For someone who already has an account.
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-              <input type="email" value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: '2 1 160px' }} />
-              <select value={assignRole} onChange={(e) => setAssignRole(e.target.value)} style={{ flex: '1 1 140px' }}>
-                <option value="company_owner">Company Owner</option>
-                <option value="admin">Admin</option>
-                <option value="site_coordinator">Site Coordinator</option>
-                <option value="cashier">Cashier</option>
-                <option value="viewer">Viewer</option>
-              </select>
-              <button type="submit" className="primary" disabled={submitting} style={{ flexShrink: 0 }}>Assign</button>
-            </div>
-          </form>
-
-          <form onSubmit={handleInviteUser} className="ticket" style={{ marginBottom: 'var(--space-4)' }}>
-            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Invite a new user</p>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
-              For someone who has never logged in before. They'll receive an email to set their password.
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
-              <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Full name" required style={{ flex: '1 1 120px' }} />
-              <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: '1 1 160px' }} />
-              <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ flex: '1 1 140px' }}>
-                <option value="company_owner">Company Owner</option>
-                <option value="admin">Admin</option>
-                <option value="site_coordinator">Site Coordinator</option>
-                <option value="cashier">Cashier</option>
-                <option value="viewer">Viewer</option>
-              </select>
-            </div>
-            <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>Send invite</button>
-          </form>
-
-          <form onSubmit={handleResetPassword} className="ticket">
-            <p style={{ fontWeight: 600, marginTop: 0, marginBottom: 'var(--space-1)' }}>Reset password</p>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-3)' }}>
-              Sends a recovery email — no password is ever entered or shown here.
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} placeholder="their@email.com" required style={{ flex: 1 }} />
-              <button type="submit" className="primary" disabled={submitting} style={{ flexShrink: 0 }}>Send reset email</button>
-            </div>
-          </form>
-        </>
-      )}
+export function AdminPage({ projectId }) {
+  const [part, setPart] = useState('approvals');
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: 'var(--space-6) var(--space-5)' }}>
+      <h1 style={{ marginBottom: 'var(--space-4)' }}>Admin</h1>
+      <div role="tablist" aria-label="Admin sections" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-5)' }}>
+        {PARTS.map((p) => (
+          <button key={p.key} role="tab" aria-selected={part === p.key} onClick={() => setPart(p.key)}
+            className={part === p.key ? 'primary' : undefined} style={{ padding: 'var(--space-2) var(--space-4)', fontSize: 'var(--text-sm)' }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel">
+        {part === 'approvals' && <Approvals projectId={projectId} />}
+        {part === 'people' && <People projectId={projectId} />}
+        {part === 'setup' && <Setup projectId={projectId} />}
+        {part === 'activity' && <Activity projectId={projectId} />}
+      </div>
     </div>
   );
 }
