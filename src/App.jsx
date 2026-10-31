@@ -14,6 +14,7 @@ import { BillsPage } from './pages/BillsPage';
 import { AdvancesPage } from './pages/AdvancesPage';
 import { CashierPage } from './pages/CashierPage';
 import { AdminPage } from './pages/AdminPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ProjectPickerPage } from './pages/ProjectPickerPage';
 import { OutboxBanner } from './components/OutboxBanner';
@@ -38,6 +39,7 @@ const TAB_TITLES = {
   advances: 'Advances',
   cashier: 'Cashier',
   admin: 'Admin',
+  settings: 'Settings',
 };
 
 const BASE_TABS = [
@@ -282,7 +284,7 @@ function AppShell() {
       ? [{ key: 'bills', label: 'Bills' }] : []),
     ...(hasRole('site_coordinator') ? [{ key: 'advances', label: 'Advances' }] : []),
     ...(hasRole('cashier') ? [{ key: 'cashier', label: 'Cashier' }] : []),
-    ...(hasRole('admin') || hasRole('company_owner') ? [{ key: 'admin', label: 'Admin' }] : []),
+    ...(hasRole('admin') || hasRole('company_owner') ? [{ key: 'admin', label: 'Admin' }, { key: 'settings', label: 'Settings' }] : []),
   ];
 
   return (
@@ -320,6 +322,7 @@ function AppShell() {
         {activeTab === 'advances' && hasRole('site_coordinator') && <AdvancesPage projectId={projectId} />}
         {activeTab === 'cashier' && hasRole('cashier') && <CashierPage projectId={projectId} />}
         {activeTab === 'admin' && (hasRole('admin') || hasRole('company_owner')) && <AdminPage projectId={projectId} />}
+        {activeTab === 'settings' && (hasRole('admin') || hasRole('company_owner')) && <SettingsPage projectId={projectId} />}
       </div>
     </div>
   );
