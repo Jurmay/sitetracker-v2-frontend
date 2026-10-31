@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { SetPasswordPage } from './pages/SetPasswordPage';
+import { TwoStepCodePage } from './components/TwoStep';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { useMyRoles } from './lib/useMyRoles';
 import { LoginPage } from './pages/LoginPage';
@@ -67,7 +69,7 @@ function ThemePicker() {
 
 // Improvement #6: fixed mobile navigation - role badge in top bar,
 // tabs moved to a dedicated bottom-style tab row with proper sizing
-function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, roles }) {
+function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, onChangePassword, roles }) {
   const primaryRole = roles[0];
   const roleLabel = primaryRole ? ROLE_LABELS[primaryRole] : null;
 
@@ -119,13 +121,19 @@ function NavBar({ tabs, activeTab, onChangeTab, onSignOut, onSwitchProject, role
         </div>
 
         {/* Right: theme picker + actions */}
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
           <ThemePicker />
           <button
             onClick={onSwitchProject}
             style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)' }}
           >
             Switch
+          </button>
+          <button
+            onClick={onChangePassword}
+            style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)' }}
+          >
+            Password
           </button>
           <button
             onClick={onSignOut}
@@ -222,7 +230,8 @@ function saveLastProject(id) {
 }
 
 function AppShell() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, recovering, finishRecovery, needsCode } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   // The installed app always opens at "/", so the last project is
   // remembered on the phone and reopened without needing a signal.
   const [projectId, setProjectId] = useState(() => new URLSearchParams(window.location.search).get('project_id') || readLastProject());
@@ -255,6 +264,14 @@ function AppShell() {
   }
 
   if (!user) return <LoginPage />;
+  if (needsCode) return <TwoStepCodePage />;
+  // Opened from a password-reset email: choose the new password first.
+  if (recovering) {
+    return <SetPasswordPage title="Set a new password" intro="Signed in from the reset link as" onDone={finishRecovery} />;
+  }
+  if (changingPassword) {
+    return <SetPasswordPage title="Change password" showTwoStep onDone={() => setChangingPassword(false)} onCancel={() => setChangingPassword(false)} />;
+  }
   if (!projectId) return <><OutboxBanner /><ProjectPickerPage onSelectProject={selectProject} /></>;
 
   const tabs = [
@@ -276,6 +293,7 @@ function AppShell() {
         activeTab={activeTab}
         onChangeTab={setActiveTab}
         onSignOut={() => { switchProject(); signOut(); }}
+        onChangePassword={() => setChangingPassword(true)}
         onSwitchProject={switchProject}
         roles={roles}
       />
