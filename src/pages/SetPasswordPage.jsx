@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { TwoStepSettings } from '../components/TwoStep';
 
 const MIN_LENGTH = 8;
 
 // Choose a new password: after opening a reset link from email, or from
 // the "Password" button while signed in.
-export function SetPasswordPage({ title, intro, onDone, onCancel }) {
+export function SetPasswordPage({ title, intro, onDone, onCancel, showTwoStep = false }) {
   const { user, changePassword } = useAuth();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -90,6 +91,7 @@ export function SetPasswordPage({ title, intro, onDone, onCancel }) {
             )}
           </form>
         )}
+        {showTwoStep && <TwoStepSettings />}
       </div>
     </div>
   );
