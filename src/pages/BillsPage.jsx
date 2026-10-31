@@ -541,6 +541,147 @@ function BillDetail({ billId, canManage, canPay, onBack, onChanged }) {
   );
 }
 
+// ---------------------------------------------------------------- retention
+
+const RELEASE_STATUS = {
+  claimed: { label: 'Claimed', color: 'var(--color-primary-deep)' },
+  received: { label: 'Received', color: 'var(--color-survey-deep)' },
+  cancelled: { label: 'Cancelled', color: 'var(--color-brick)' },
+};
+
+// Retention the client deducted from certified bills, and claims to get
+// it back (often half on completion, the rest after the defects period).
+function Retention({ projectId, canManage, canPay, refreshKey }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [panel, setPanel] = useState(null); // { kind: 'claim' } | { kind: 'received'|'cancel', id }
+  const [form, setForm] = useState({});
+
+  const load = useCallback(() => {
+    apiFetch('/api/billing/retention', { params: { project_id: projectId } })
+      .then(setData)
+      .catch((err) => setError(err.message));
+  }, [projectId]);
+  useEffect(() => { load(); }, [load, refreshKey]);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  async function call(path, body, done) {
+    setBusy(true); setError(null); setSuccess(null);
+    try {
+      setData(await apiFetch(path, { method: 'POST', body }));
+      setSuccess(done); setPanel(null); setForm({});
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadPdf(r) {
+    try {
+      const blob = await apiFetch(`/api/billing/retention/${r.id}/pdf`, { raw: true });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${r.release_ref}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  if (!data) return error ? <ErrorBox message={error} /> : null;
+  const { position, releases } = data;
+  if (position.withheld <= 0 && releases.length === 0) return null;
+
+  return (
+    <section aria-labelledby="retention-title" style={{ marginTop: 'var(--space-6)' }}>
+      <div className="ledger-header"><h3 id="retention-title">Retention</h3><span className="ledger-header-note">deducted by the client from certified bills</span></div>
+      <div className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
+        <SumRow label="Deducted on certified bills" value={position.withheld} />
+        <SumRow label="Received back" value={position.released} minus />
+        <div style={{ borderTop: '1px solid var(--color-aggregate-light)', paddingTop: 'var(--space-2)' }}>
+          <SumRow label="Still held by the client" value={position.held} strong />
+        </div>
+        {position.claimed_open > 0 && <SumRow label="Claimed, waiting for payment" value={position.claimed_open} />}
+        <SumRow label="Can still be claimed" value={position.available} />
+        {canManage && position.available > 0 && panel?.kind !== 'claim' && (
+          <div><button className="primary" onClick={() => { setPanel({ kind: 'claim' }); setForm({ amount: String(position.available), stage: '', claim_date: bhutanToday() }); setSuccess(null); }}>Claim retention</button></div>
+        )}
+        {panel?.kind === 'claim' && (
+          <div className="ticket ticket--accent-safety" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-3)' }}>
+              <Field label={`Amount (Nu., up to ${money(position.available)})`}><input type="number" min="0" max={position.available} step="any" inputMode="decimal" value={form.amount} onChange={set('amount')} /></Field>
+              <Field label="Stage"><input value={form.stage} onChange={set('stage')} placeholder="e.g. Half on completion" /></Field>
+              <Field label="Date of claim"><input type="date" max={bhutanToday()} value={form.claim_date} onChange={set('claim_date')} /></Field>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <button className="primary" disabled={busy || !(Number(form.amount) > 0)} onClick={() => call('/api/billing/retention', {
+                project_id: projectId, amount: Number(form.amount), stage: form.stage.trim() || null, claim_date: form.claim_date || null,
+              }, 'Retention claim made. Download the PDF to send to the client.')}>Make claim</button>
+              <button onClick={() => setPanel(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+      {success && <p role="status" style={{ color: 'var(--color-survey-deep)', fontWeight: 600 }}>{success}</p>}
+      <ErrorBox message={error} />
+
+      {releases.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+          {releases.map((r) => {
+            const st = RELEASE_STATUS[r.status] ?? RELEASE_STATUS.claimed;
+            const open = panel && panel.id === r.id ? panel.kind : null;
+            return (
+              <div key={r.id} className="ticket" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p className="numeric" style={{ margin: 0, fontWeight: 700 }}>{r.release_ref} · Nu. {money(r.amount)}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-aggregate)' }}>
+                      {[r.stage, `claimed ${formatDate(r.claim_date)}`, r.received_date && `received ${formatDate(r.received_date)}`, r.received_reference].filter(Boolean).join(' · ')}
+                    </p>
+                    {r.cancel_reason && <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-brick)' }}>Cancelled: {r.cancel_reason}</p>}
+                  </div>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '2px 8px', borderRadius: 4, color: st.color, border: `1.5px solid ${st.color}` }}>{st.label}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <button onClick={() => downloadPdf(r)} style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)' }}>Download PDF</button>
+                  {canPay && r.status === 'claimed' && !open && (
+                    <button className="primary" style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)' }}
+                      onClick={() => { setPanel({ kind: 'received', id: r.id }); setForm({ received_date: bhutanToday(), reference: '' }); }}>Record as received</button>
+                  )}
+                  {canManage && r.status === 'claimed' && !open && (
+                    <button style={{ padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)' }}
+                      onClick={() => { setPanel({ kind: 'cancel', id: r.id }); setForm({ reason: '' }); }}>Cancel claim</button>
+                  )}
+                </div>
+                {open === 'received' && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 140px' }}><Field label="Received on"><input type="date" max={bhutanToday()} value={form.received_date} onChange={set('received_date')} /></Field></div>
+                    <div style={{ flex: '1 1 160px' }}><Field label="Cheque / transfer no."><input value={form.reference} onChange={set('reference')} /></Field></div>
+                    <button className="primary" disabled={busy} onClick={() => call(`/api/billing/retention/${r.id}/received`, {
+                      received_date: form.received_date || null, reference: form.reference.trim() || null,
+                    }, `${r.release_ref} recorded as received.`)}>Save</button>
+                    <button onClick={() => setPanel(null)}>Cancel</button>
+                  </div>
+                )}
+                {open === 'cancel' && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 220px' }}><Field label="Reason for cancelling *"><input value={form.reason} onChange={set('reason')} /></Field></div>
+                    <button disabled={busy || !form.reason.trim()} onClick={() => call(`/api/billing/retention/${r.id}/cancel`, { reason: form.reason.trim() }, `${r.release_ref} cancelled.`)}>Cancel claim</button>
+                    <button onClick={() => setPanel(null)}>Keep it</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------- page
 
 export function BillsPage({ projectId, canManage, canPay }) {
@@ -568,6 +709,7 @@ export function BillsPage({ projectId, canManage, canPay }) {
               onOpen={(id) => setView({ name: 'detail', id })} onNew={() => setView({ name: 'new' })}
               onTerms={() => setView({ name: 'terms' })} />
           )}
+          {!loading && !error && <Retention projectId={projectId} canManage={canManage} canPay={canPay} refreshKey={bills.length} />}
         </>
       )}
       {view.name === 'terms' && <TermsForm projectId={projectId} onDone={() => setView({ name: 'list' })} />}
