@@ -1,48 +1,48 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { RESET_LINK_ERROR } from '../lib/resetLink';
 import { useTheme } from '../context/ThemeContext';
 
+// TEST-PHASE LOGIN. Pick a role, enter the shared PIN.
+// Each role is one fixed test account; the PIN is turned into that account's
+// password, so a wrong PIN is refused by the server, not just by this screen.
+// Replace this page with real email + password sign-in before real data goes in.
+const ROLES = [
+  { key: 'admin', label: 'Admin', email: 'admin@test.com' },
+  { key: 'cashier', label: 'Cashier', email: 'cashier@test.com' },
+  { key: 'coordinator', label: 'Coordinator', email: 'coordinator@test.com' },
+];
+const PIN_LENGTH = 4;
+const passwordFromPin = (pin) => `sitetracker-${pin}`;
+
 export function LoginPage() {
-  const { signIn, sendPasswordReset } = useAuth();
+  const { signIn } = useAuth();
   const { theme, setTheme, themes } = useTheme();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState(
-    RESET_LINK_ERROR ? 'That reset link has expired or was already used. Ask for a new one below.' : null,
-  );
+  const [role, setRole] = useState(null);
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [forgot, setForgot] = useState(Boolean(RESET_LINK_ERROR));
-  const [resetSent, setResetSent] = useState(false);
+  const pinRef = useRef(null);
 
-  async function handleReset(e) {
-    e.preventDefault();
+  function chooseRole(next) {
+    setRole(next);
+    setPin('');
     setError(null);
-    setSubmitting(true);
-    try {
-      await sendPasswordReset(email.trim());
-      setResetSent(true);
-    } catch (err) {
-      setError(err.message ?? 'Could not send the email. Try again in a few minutes.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function showForgot(on) {
-    setForgot(on);
-    setError(null);
-    setResetSent(false);
+    // Wait for the PIN box to be on screen before moving the cursor into it.
+    setTimeout(() => pinRef.current?.focus(), 0);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!role || pin.length !== PIN_LENGTH) return;
     setError(null);
     setSubmitting(true);
     try {
-      await signIn(email, password);
+      await signIn(role.email, passwordFromPin(pin));
     } catch (err) {
-      setError(err.message ?? 'Could not sign in. Check your email and password.');
+      const wrongPin = /invalid login credentials/i.test(err?.message ?? '');
+      setError(wrongPin ? 'Wrong PIN. Try again.' : (err?.message ?? 'Could not sign in. Try again.'));
+      setPin('');
+      pinRef.current?.focus();
     } finally {
       setSubmitting(false);
     }
@@ -68,88 +68,55 @@ export function LoginPage() {
 
       <div className="ticket" style={{ width: '100%', maxWidth: 380 }}>
         <h1 style={{ marginBottom: 'var(--space-1)' }}>SiteTracker</h1>
-        <p style={{ color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-6)' }}>
-          {forgot ? 'Reset your password.' : 'Sign in to your project.'}
+        <p style={{ color: 'var(--color-aggregate)', marginTop: 0, marginBottom: 'var(--space-5)' }}>
+          Test login. Choose who you are, then enter the PIN.
         </p>
 
-        {forgot ? (
-          resetSent ? (
-            <>
-              <p style={{ marginTop: 0 }}>
-                If <strong style={{ overflowWrap: 'anywhere' }}>{email.trim()}</strong> has an account, a link to set a new password is on its way.
-                Open it on this device. Check the spam folder too.
+        <div role="group" aria-label="Sign in as" style={{ display: 'grid', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+          {ROLES.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              className={role?.key === r.key ? 'primary' : undefined}
+              aria-pressed={role?.key === r.key}
+              onClick={() => chooseRole(r)}
+              disabled={submitting}
+              style={{ width: '100%' }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {role && (
+          <form onSubmit={handleSubmit}>
+            <label htmlFor="pin" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
+              PIN for {role.label}
+            </label>
+            <input
+              id="pin"
+              ref={pinRef}
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              maxLength={PIN_LENGTH}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, PIN_LENGTH))}
+              required
+              style={{ marginBottom: 'var(--space-5)', letterSpacing: '0.5em', textAlign: 'center' }}
+            />
+
+            {error && (
+              <p role="alert" style={{ color: 'var(--color-brick)', fontSize: 'var(--text-sm)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
+                {error}
               </p>
-              <button type="button" onClick={() => showForgot(false)} style={{ width: '100%' }}>Back to sign in</button>
-            </>
-          ) : (
-            <form onSubmit={handleReset}>
-              <label htmlFor="reset-email" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-                Email
-              </label>
-              <input
-                id="reset-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                style={{ marginBottom: 'var(--space-5)' }}
-              />
-              {error && (
-                <p role="alert" style={{ color: 'var(--color-brick)', fontSize: 'var(--text-sm)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
-                  {error}
-                </p>
-              )}
-              <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>
-                {submitting ? 'Sending…' : 'Email me a reset link'}
-              </button>
-              <button type="button" onClick={() => showForgot(false)} style={{ width: '100%', marginTop: 'var(--space-3)' }}>
-                Back to sign in
-              </button>
-            </form>
-          )
-        ) : (
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            style={{ marginBottom: 'var(--space-4)' }}
-          />
+            )}
 
-          <label htmlFor="password" style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            style={{ marginBottom: 'var(--space-5)' }}
-          />
-
-          {error && (
-            <p style={{ color: 'var(--color-brick)', fontSize: 'var(--text-sm)', marginTop: 0, marginBottom: 'var(--space-4)' }}>
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className="primary" disabled={submitting} style={{ width: '100%' }}>
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
-          <button type="button" onClick={() => showForgot(true)}
-            style={{ width: '100%', marginTop: 'var(--space-3)', background: 'none', border: 'none', boxShadow: 'none', color: 'var(--color-primary-deep)', fontSize: 'var(--text-sm)', textDecoration: 'underline' }}>
-            Forgot password?
-          </button>
-        </form>
+            <button type="submit" className="primary" disabled={submitting || pin.length !== PIN_LENGTH} style={{ width: '100%' }}>
+              {submitting ? 'Signing in…' : `Sign in as ${role.label}`}
+            </button>
+          </form>
         )}
       </div>
     </div>
